@@ -24,3 +24,67 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Light theme overrides (when body has .light-theme) */
+body.light-theme .bg-zinc-50,
+body.light-theme .dark\:bg-zinc-950 {
+  background: #ffffff !important;
+}
+body.light-theme .bg-white,
+body.light-theme .dark\:bg-zinc-900 {
+  background: #f5f5f5 !important;
+}
+body.light-theme .text-zinc-900,
+body.light-theme .dark\:text-zinc-100 {
+  color: #1a1a1a !important;
+}
+body.light-theme .text-zinc-700,
+body.light-theme .dark\:text-zinc-300 {
+  color: #1a1a1a !important;
+}
+body.light-theme .text-zinc-600,
+body.light-theme .dark\:text-zinc-400 {
+  color: #4a4a4a !important;
+}
+body.light-theme .text-zinc-500,
+body.light-theme .dark\:text-zinc-500 {
+  color: #6b6b6b !important;
+}
+body.light-theme .border-zinc-200,
+body.light-theme .dark\:border-zinc-800 {
+  border-color: #e0e0e0 !important;
+}
+body.light-theme .border-zinc-300,
+body.light-theme .dark\:border-zinc-600,
+body.light-theme .dark\:border-zinc-700 {
+  border-color: #e0e0e0 !important;
+}
+body.light-theme .bg-zinc-100,
+body.light-theme .dark\:bg-zinc-700,
+body.light-theme .dark\:bg-zinc-800 {
+  background-color: #eeeeee !important;
+}
+body.light-theme input.bg-zinc-50,
+body.light-theme input.dark\:bg-zinc-800 {
+  background-color: #f5f5f5 !important;
+}
+body.light-theme .hover\:bg-zinc-100:hover,
+body.light-theme .dark\:hover\:bg-zinc-800:hover {
+  background-color: #eeeeee !important;
+}
+body.light-theme .hover\:text-zinc-700:hover,
+body.light-theme .dark\:hover\:text-zinc-300:hover {
+  color: #1a1a1a !important;
+}
+body.light-theme .hover\:text-zinc-900:hover,
+body.light-theme .dark\:hover\:text-zinc-100:hover {
+  color: #1a1a1a !important;
+}
+body.light-theme .hover\:bg-zinc-50:hover,
+body.light-theme .dark\:hover\:bg-zinc-800:hover {
+  background-color: #f0f0f0 !important;
+}
+body.light-theme .bg-zinc-50.dark\:bg-zinc-800 {
+  background: #f5f5f5 !important;
+}
+/* Colored elements (red, green, amber) left unchanged */

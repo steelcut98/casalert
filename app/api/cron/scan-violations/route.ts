@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
+import { fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -45,7 +46,60 @@ export async function GET(request: Request) {
 
   for (const prop of properties ?? []) {
     const citySlug = cityIdToSlug.get(prop.city_id) ?? "";
-    if (citySlug !== "chicago") {
+    let rows: Array<{
+      id: string;
+      violation_date?: string | null;
+      violation_code?: string | null;
+      violation_description?: string | null;
+      violation_status?: string | null;
+      violation_status_date?: string | null;
+      violation_inspector_comments?: string | null;
+      violation_ordinance?: string | null;
+      inspector_id?: string | null;
+      inspection_number?: string | null;
+      inspection_category?: string | null;
+      inspection_status?: string | null;
+      address?: string | null;
+      property_group?: string | null;
+    }> = [];
+
+    if (citySlug === "chicago") {
+      try {
+        rows = await fetchChicagoViolationsForProperty(
+          prop.address,
+          prop.property_group,
+          { appToken: APP_TOKEN }
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[cron/scan-violations] property", prop.id, message);
+        logs.push({
+          propertyId: prop.id,
+          address: prop.address,
+          citySlug,
+          fetched: 0,
+          newCount: 0,
+          error: message,
+        });
+        continue;
+      }
+    } else if (citySlug === "philadelphia") {
+      try {
+        rows = await fetchPhiladelphiaViolationsForProperty(prop.address);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[cron/scan-violations] property", prop.id, message);
+        logs.push({
+          propertyId: prop.id,
+          address: prop.address,
+          citySlug,
+          fetched: 0,
+          newCount: 0,
+          error: message,
+        });
+        continue;
+      }
+    } else {
       logs.push({
         propertyId: prop.id,
         address: prop.address,
@@ -58,11 +112,6 @@ export async function GET(request: Request) {
     }
 
     try {
-      const rows = await fetchChicagoViolationsForProperty(
-        prop.address,
-        prop.property_group,
-        { appToken: APP_TOKEN }
-      );
 
       const { data: existing } = await supabase
         .from("violations")
@@ -81,6 +130,7 @@ export async function GET(request: Request) {
         violation_status_date: string | null;
         violation_inspector_comments: string | null;
         violation_ordinance: string | null;
+        inspector_id: string | null;
         inspection_number: string | null;
         inspection_category: string | null;
         inspection_status: string | null;
@@ -107,6 +157,7 @@ export async function GET(request: Request) {
               : null,
             violation_inspector_comments: row.violation_inspector_comments ?? null,
             violation_ordinance: row.violation_ordinance ?? null,
+            inspector_id: row.inspector_id ?? null,
             inspection_number: row.inspection_number ?? null,
             inspection_category: row.inspection_category ?? null,
             inspection_status: row.inspection_status ?? null,
@@ -114,7 +165,7 @@ export async function GET(request: Request) {
             property_group: row.property_group ?? null,
             needs_alert: true,
             first_seen_at: new Date().toISOString(),
-            source_dataset: "building",
+            source_dataset: citySlug === "philadelphia" ? "philadelphia" : "building",
           });
           existingIds.add(row.id);
         }

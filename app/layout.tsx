@@ -27,6 +27,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('casalert-theme');if(t==='light')document.body.classList.add('light-theme');}catch(e){}})();`,
+          }}
+        />
         {children}
       </body>
     </html>

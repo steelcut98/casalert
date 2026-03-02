@@ -14,8 +14,14 @@ const DATA_PREVIEW_BASE =
   "https://data.cityofchicago.org/Buildings/Building-Violations/22u3-xenr/data_preview";
 const BUILDING_RECORDS_URL = "https://webapps1.chicago.gov/buildingrecords/";
 
+const PHILADELPHIA_PROPERTY_HISTORY_URL = "https://li.phila.gov/property-history";
+const PHILADELPHIA_LI_URL = "https://li.phila.gov/";
+
 const POPOVER_GUIDANCE_TEXT =
   "Building code violations can result in fines starting at $1,000–$2,000 per violation per day, but can escalate significantly for repeat offenders — including placement on the Problem Landlord List, permit ineligibility, property liens, and in severe cases, building forfeiture. This applies to all violation types (COMPLAINT, PERIODIC, PERMIT, REGISTRATION). COMPLAINT violations carry the highest risk as they indicate someone actively reported a problem. Always refer to your official violation notice for specific deadlines. This is general information, not legal advice.";
+
+const POPOVER_GUIDANCE_TEXT_PHILADELPHIA =
+  "In Philadelphia, property owners have 35 days to address a violation after receiving a notice. If the property fails re-inspection, L&I may initiate legal action including fines, license revocation, and court proceedings. Always refer to your official violation notice for specific deadlines. This is general information, not legal advice.";
 
 const REMINDER_FREQUENCY_LABELS: Record<string, string> = {
   every_3_days: "every 3 days",
@@ -71,6 +77,7 @@ export function PropertyDetailClient({
   propertyAddress,
   propertyGroup,
   remindersByViolation,
+  citySlug = "chicago",
 }: {
   propertyId: string;
   violations: ViolationRow[];
@@ -79,6 +86,7 @@ export function PropertyDetailClient({
   propertyAddress: string;
   propertyGroup: string | null;
   remindersByViolation: Record<string, ReminderInfo>;
+  citySlug?: string;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -122,6 +130,11 @@ export function PropertyDetailClient({
   const allOpenHaveReminders =
     openViolations.length > 0 &&
     openViolations.every((v) => remindersByViolation[v.id]);
+
+  const isPhiladelphia = citySlug === "philadelphia";
+  const cityDataUrl = isPhiladelphia ? PHILADELPHIA_PROPERTY_HISTORY_URL : `${DATA_PREVIEW_BASE}?column=address&value=${encodeURIComponent(propertyAddress)}`;
+  const buildingRecordsUrl = isPhiladelphia ? PHILADELPHIA_LI_URL : BUILDING_RECORDS_URL;
+  const popoverGuidanceText = isPhiladelphia ? POPOVER_GUIDANCE_TEXT_PHILADELPHIA : POPOVER_GUIDANCE_TEXT;
 
   // Checkbox stays checked only when all open violations share the exact same reminder
   const allOpenHaveSameReminder =
@@ -312,7 +325,7 @@ export function PropertyDetailClient({
                 </button>
                 {infoPopoverAnchor === v.id && (
                   <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-zinc-200 bg-white p-3 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
-                    <p className="text-xs text-zinc-700 dark:text-zinc-300">{POPOVER_GUIDANCE_TEXT}</p>
+                    <p className="text-xs text-zinc-700 dark:text-zinc-300">{popoverGuidanceText}</p>
                   </div>
                 )}
               </div>
@@ -378,7 +391,7 @@ export function PropertyDetailClient({
               </>
             )}
             <a
-              href={`${DATA_PREVIEW_BASE}?column=address&value=${encodeURIComponent(v.address ?? propertyAddress)}`}
+              href={isPhiladelphia ? cityDataUrl : `${DATA_PREVIEW_BASE}?column=address&value=${encodeURIComponent(v.address ?? propertyAddress)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -389,7 +402,7 @@ export function PropertyDetailClient({
               </svg>
             </a>
             <a
-              href={BUILDING_RECORDS_URL}
+              href={buildingRecordsUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -514,7 +527,7 @@ export function PropertyDetailClient({
               {v.inspector_id && (
                 <>
                   <dt className="text-zinc-500 dark:text-zinc-400">
-                    Inspector ID
+                    {citySlug === "philadelphia" ? "Assigned to" : "Inspector ID"}
                   </dt>
                   <dd className="text-zinc-900 dark:text-zinc-100">
                     {v.inspector_id}
@@ -648,7 +661,7 @@ export function PropertyDetailClient({
               </button>
               {infoPopoverAnchor === "section" && (
                 <div className="absolute left-0 top-full z-50 mt-1 w-80 rounded-lg border border-zinc-200 bg-white p-3 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
-                  <p className="text-xs text-zinc-700 dark:text-zinc-300">{POPOVER_GUIDANCE_TEXT}</p>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-300">{popoverGuidanceText}</p>
                 </div>
               )}
             </div>

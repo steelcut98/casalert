@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { PropertyDetailClient } from "./PropertyDetailClient";
+import { PropertyNickname } from "./PropertyNickname";
 import { RescanButton } from "./RescanButton";
 
 export default async function PropertyDetailPage({
@@ -18,7 +20,7 @@ export default async function PropertyDetailPage({
 
   const { data: property } = await supabase
     .from("properties")
-    .select("id, address, city_id, last_scanned_at, property_group")
+    .select("id, address, nickname, city_id, last_scanned_at, property_group")
     .eq("id", propertyId)
     .eq("user_id", user.id)
     .single();
@@ -26,7 +28,7 @@ export default async function PropertyDetailPage({
 
   const { data: city } = await supabase
     .from("cities")
-    .select("id, name")
+    .select("id, name, slug")
     .eq("id", property.city_id)
     .single();
 
@@ -111,14 +113,30 @@ export default async function PropertyDetailPage({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </Link>
+            <ThemeToggle />
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-          {property.address}
-        </h1>
+        {property.nickname ? (
+          <>
+            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
+              {property.nickname}
+            </h1>
+            <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-500">
+              {property.address}
+            </p>
+            <PropertyNickname propertyId={propertyId} initialNickname={property.nickname} />
+          </>
+        ) : (
+          <>
+            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
+              {property.address}
+            </h1>
+            <PropertyNickname propertyId={propertyId} initialNickname={property.nickname} />
+          </>
+        )}
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-zinc-600 dark:text-zinc-400">
           <span>
             {city?.name ?? "—"} · Last scanned:{" "}
@@ -137,6 +155,7 @@ export default async function PropertyDetailPage({
           propertyAddress={property.address}
           propertyGroup={property.property_group}
           remindersByViolation={Object.fromEntries(remindersByViolation)}
+          citySlug={city?.slug ?? "chicago"}
         />
       </main>
     </div>

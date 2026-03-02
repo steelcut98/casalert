@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
+import { fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -164,29 +165,44 @@ export async function rescanPropertyViolations(
 
   const { data: city } = await supabase
     .from("cities")
-    .select("id")
+    .select("id, slug")
     .eq("id", property.city_id)
     .single();
   if (!city) return { error: "City not found" };
 
   // Delete all existing violations for this property so we can repopulate with full fields
-  // (e.g. violation_inspector_comments, violation_ordinance). violation_reminders CASCADE.
   const { error: deleteErr } = await supabase
     .from("violations")
     .delete()
     .eq("property_id", propertyId);
   if (deleteErr) return { error: deleteErr.message };
 
-  const rows = await fetchChicagoViolationsForProperty(
-    property.address,
-    property.property_group,
-    { appToken: APP_TOKEN }
-  );
+  type RowShape = {
+    id: string;
+    violation_date?: string | null;
+    violation_code?: string | null;
+    violation_description?: string | null;
+    violation_status?: string | null;
+    violation_status_date?: string | null;
+    violation_inspector_comments?: string | null;
+    violation_ordinance?: string | null;
+    inspector_id?: string | null;
+    inspection_number?: string | null;
+    inspection_category?: string | null;
+    inspection_status?: string | null;
+    address?: string | null;
+    property_group?: string | null;
+  };
 
-  // Debug: log first row from Chicago fetch before mapping to Supabase columns
-  if (rows.length > 0) {
-    const r0 = rows[0];
-    console.log("[rescan] First Chicago row id:", r0.id, "violation_inspector_comments:", r0.violation_inspector_comments ?? "(null)", "violation_ordinance:", r0.violation_ordinance ?? "(null)");
+  let rows: RowShape[] = [];
+  if (city.slug === "philadelphia") {
+    rows = await fetchPhiladelphiaViolationsForProperty(property.address);
+  } else {
+    rows = await fetchChicagoViolationsForProperty(
+      property.address,
+      property.property_group,
+      { appToken: APP_TOKEN }
+    );
   }
 
   const toInsert = rows.map((row) => ({
@@ -208,7 +224,7 @@ export async function rescanPropertyViolations(
     property_group: row.property_group ?? null,
     needs_alert: false,
     first_seen_at: new Date().toISOString(),
-    source_dataset: "building",
+    source_dataset: city.slug === "philadelphia" ? "philadelphia" : "building",
   }));
 
   if (toInsert.length > 0) {
@@ -226,4 +242,26 @@ export async function rescanPropertyViolations(
 
   revalidatePath(`/dashboard/${propertyId}`);
   return { count: rows.length };
+}
+
+export async function updatePropertyNickname(
+  propertyId: string,
+  nickname: string | null
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const { error } = await supabase
+    .from("properties")
+    .update({ nickname: nickname?.trim() || null })
+    .eq("id", propertyId)
+    .eq("user_id", user.id);
+
+  if (error) return { error: error.message };
+  revalidatePath(`/dashboard/${propertyId}`);
+  revalidatePath("/dashboard");
+  return {};
 }

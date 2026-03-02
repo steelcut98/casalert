@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { addPropertyWithBaselineScan, type OnboardingResult } from "./actions";
 import { InspectionCategoryBadge } from "@/components/InspectionCategoryBadge";
 import { propertyLimitLabel } from "@/lib/plans";
@@ -21,6 +21,47 @@ export function OnboardingForm({
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<OnboardingResult | null>(null);
+  const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
+  const [addressSearchLoading, setAddressSearchLoading] = useState(false);
+  const [addressSearchDone, setAddressSearchDone] = useState(false);
+  const addressDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (address.length < 3) {
+      setAddressSuggestions([]);
+      setAddressSearchDone(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setAddressSearchLoading(true);
+      setAddressSearchDone(false);
+      try {
+        const res = await fetch(
+          `/api/address-search?query=${encodeURIComponent(address)}&city=${encodeURIComponent(citySlug)}`
+        );
+        const data = (await res.json()) as { addresses?: string[] };
+        setAddressSuggestions(data.addresses ?? []);
+        setAddressSearchDone(true);
+      } catch {
+        setAddressSuggestions([]);
+        setAddressSearchDone(true);
+      } finally {
+        setAddressSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [address, citySlug]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (addressDropdownRef.current && !addressDropdownRef.current.contains(e.target as Node)) {
+        setAddressSuggestions([]);
+        setAddressSearchDone(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,6 +73,8 @@ export function OnboardingForm({
     setLoading(false);
     if (res.success) {
       setAddress("");
+      setAddressSuggestions([]);
+      setAddressSearchDone(false);
     }
   }
 
@@ -48,23 +91,59 @@ export function OnboardingForm({
             className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
           >
             <option value="chicago">Chicago</option>
-            <option value="philadelphia" disabled>
-              Philadelphia (coming soon)
-            </option>
+            <option value="philadelphia">Philadelphia</option>
           </select>
         </div>
-        <div>
+        <div ref={addressDropdownRef} className="relative">
           <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Property address
           </label>
-          <input
-            type="text"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="e.g. 3223 N HARLEM AVE"
-            className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-            disabled={loading || !canAddProperty}
-          />
+          <div className="relative">
+            <input
+              type="text"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="e.g. 3223 N HARLEM AVE"
+              className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 pr-8 text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+              disabled={loading || !canAddProperty}
+              autoComplete="off"
+            />
+            {addressSearchLoading && (
+              <span className="absolute right-3 top-1/2 mt-0.5 -translate-y-1/2" aria-hidden>
+                <svg className="h-4 w-4 animate-spin text-zinc-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              </span>
+            )}
+          </div>
+          {address.length >= 3 && (addressSearchLoading || addressSuggestions.length > 0 || addressSearchDone) && (
+            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+              {addressSearchLoading && addressSuggestions.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">Searching…</p>
+              ) : addressSuggestions.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">No matching addresses found.</p>
+              ) : (
+                <ul className="py-1">
+                  {addressSuggestions.map((s) => (
+                    <li key={s}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddress(s);
+                          setAddressSuggestions([]);
+                          setAddressSearchDone(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-100 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                      >
+                        {s}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
         {!canAddProperty && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">

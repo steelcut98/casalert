@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { validateChicagoAddress, fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
+import { validatePhiladelphiaAddress, fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 import { canAddProperty, type PlanTier } from "@/lib/plans";
 import { revalidatePath } from "next/cache";
 
@@ -43,8 +44,8 @@ export async function addPropertyWithBaselineScan(
     return { success: false, error: "You must be signed in." };
   }
 
-  if (citySlug !== "chicago") {
-    return { success: false, error: "Only Chicago is supported at this time." };
+  if (citySlug !== "chicago" && citySlug !== "philadelphia") {
+    return { success: false, error: "Unsupported city." };
   }
 
   const { data: profile } = await supabase
@@ -66,13 +67,6 @@ export async function addPropertyWithBaselineScan(
     };
   }
 
-  const validation = await validateChicagoAddress(address.trim(), {
-    appToken: APP_TOKEN,
-  });
-  if (!validation.valid) {
-    return { success: false, error: validation.error };
-  }
-
   const { data: city } = await supabase
     .from("cities")
     .select("id, name")
@@ -82,8 +76,45 @@ export async function addPropertyWithBaselineScan(
     return { success: false, error: "City not found." };
   }
 
-  const normalizedAddress = address.trim().toUpperCase();
-  const propertyGroup = validation.propertyGroup ?? null;
+  let propertyGroup: string | null = null;
+  let normalizedAddress = address.trim().toUpperCase();
+  let allRows: Array<{
+    id: string;
+    violation_date?: string | null;
+    violation_code?: string | null;
+    violation_description?: string | null;
+    violation_status?: string | null;
+    violation_status_date?: string | null;
+    violation_inspector_comments?: string | null;
+    violation_ordinance?: string | null;
+    inspection_number?: string | null;
+    inspection_category?: string | null;
+    inspection_status?: string | null;
+    address?: string | null;
+    property_group?: string | null;
+  }> = [];
+
+  if (citySlug === "chicago") {
+    const validation = await validateChicagoAddress(address.trim(), {
+      appToken: APP_TOKEN,
+    });
+    if (!validation.valid) {
+      return { success: false, error: validation.error };
+    }
+    propertyGroup = validation.propertyGroup ?? null;
+    allRows = await fetchChicagoViolationsForProperty(
+      address.trim(),
+      propertyGroup,
+      { appToken: APP_TOKEN }
+    );
+  } else if (citySlug === "philadelphia") {
+    const validation = await validatePhiladelphiaAddress(address.trim());
+    if (!validation.valid) {
+      return { success: false, error: validation.error };
+    }
+    propertyGroup = validation.propertyGroup ?? null;
+    allRows = await fetchPhiladelphiaViolationsForProperty(address.trim());
+  }
 
   const { data: newProperty, error: insertPropError } = await supabase
     .from("properties")
@@ -106,12 +137,6 @@ export async function addPropertyWithBaselineScan(
       error: insertPropError?.message ?? "Failed to save property.",
     };
   }
-
-  const allRows = await fetchChicagoViolationsForProperty(
-    address.trim(),
-    propertyGroup,
-    { appToken: APP_TOKEN }
-  );
 
   const openStatus = "OPEN";
   let openCount = 0;
@@ -139,6 +164,7 @@ export async function addPropertyWithBaselineScan(
     violation_status_date: row.violation_status_date ? new Date(row.violation_status_date).toISOString() : null,
     violation_inspector_comments: row.violation_inspector_comments ?? null,
     violation_ordinance: row.violation_ordinance ?? null,
+    inspector_id: row.inspector_id ?? null,
     inspection_number: row.inspection_number ?? null,
     inspection_category: row.inspection_category ?? null,
     inspection_status: row.inspection_status ?? null,
@@ -146,7 +172,7 @@ export async function addPropertyWithBaselineScan(
     property_group: row.property_group ?? null,
     needs_alert: false,
     first_seen_at: new Date().toISOString(),
-    source_dataset: "building",
+    source_dataset: citySlug === "philadelphia" ? "philadelphia" : "building",
   }));
 
   if (violationsToInsert.length > 0) {
