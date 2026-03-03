@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
 import { fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
+import { sendNewViolationEmail, sendReminderEmail } from "@/lib/email-alerts";
+import { sendNewViolationSMS, sendReminderSMS } from "@/lib/sms-alerts";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -24,6 +26,26 @@ export async function GET(request: Request) {
   const supabase = createAdminClient();
   const logs: LogEntry[] = [];
   let totalNew = 0;
+
+  function violationTypeFromCategory(category: string | null | undefined) {
+    const c = (category ?? "").toUpperCase();
+    if (c.includes("COMPLAINT")) return "COMPLAINT";
+    if (c.includes("PERIODIC")) return "PERIODIC";
+    if (c.includes("REGISTRATION")) return "REGISTRATION";
+    if (c.includes("PERMIT")) return "PERMIT";
+    return "OTHER";
+  }
+
+  function daysBetweenTodayAndDate(dateOnly: string) {
+    const parts = dateOnly.split("-");
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+    const deadlineUtc = Date.UTC(y, (m || 1) - 1, d || 1);
+    const now = new Date();
+    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return Math.ceil((deadlineUtc - todayUtc) / (1000 * 60 * 60 * 24));
+  }
 
   const { data: cities } = await supabase
     .from("cities")
@@ -220,6 +242,278 @@ export async function GET(request: Request) {
         error: message,
       });
     }
+  }
+
+  // ----------------------------------------------------------------------------
+  // Alert-sending phase: new violations (needs_alert = true)
+  // ----------------------------------------------------------------------------
+  try {
+    const { data: needsAlertRows, error: needsAlertErr } = await supabase
+      .from("violations")
+      .select("property_id")
+      .eq("needs_alert", true);
+
+    if (needsAlertErr) {
+      console.error("[cron/scan-violations] needs_alert lookup error", needsAlertErr);
+    } else {
+      const propertyIds = [
+        ...new Set((needsAlertRows ?? []).map((r) => r.property_id)),
+      ];
+
+      for (const propertyId of propertyIds) {
+        const { data: property } = await supabase
+          .from("properties")
+          .select("id, address, user_id, city_id")
+          .eq("id", propertyId)
+          .single();
+        if (!property) continue;
+
+        const citySlug = cityIdToSlug.get(property.city_id) ?? "";
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select(
+            "id, email, phone, plan, email_alerts_enabled, sms_alerts_enabled, alert_complaint, alert_periodic, alert_registration, alert_permit"
+          )
+          .eq("id", property.user_id)
+          .single();
+        if (!profile) continue;
+
+        const { data: pending } = await supabase
+          .from("violations")
+          .select(
+            "id, inspection_category, violation_date, violation_code, violation_description, violation_status, needs_alert"
+          )
+          .eq("property_id", propertyId)
+          .eq("needs_alert", true);
+
+        const filtered = (pending ?? []).filter((v) => {
+          const t = violationTypeFromCategory(v.inspection_category);
+          if (t === "COMPLAINT") return profile.alert_complaint !== false;
+          if (t === "PERIODIC") return profile.alert_periodic !== false;
+          if (t === "REGISTRATION") return profile.alert_registration !== false;
+          if (t === "PERMIT") return profile.alert_permit !== false;
+          return false;
+        });
+
+        const complaintCount = filtered.filter(
+          (v) => violationTypeFromCategory(v.inspection_category) === "COMPLAINT"
+        ).length;
+
+        if (filtered.length > 0 && profile.email_alerts_enabled) {
+          try {
+            const r = await sendNewViolationEmail(
+              profile.email,
+              property.address,
+              property.id,
+              filtered,
+              citySlug
+            );
+            console.log("[cron/scan-violations] email new-violations", {
+              propertyId,
+              to: profile.email,
+              success: r.success,
+              error: r.error,
+              count: filtered.length,
+            });
+          } catch (err) {
+            console.log("[cron/scan-violations] email new-violations exception", {
+              propertyId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        const phone = (profile.phone ?? "").trim();
+        const isPaid = profile.plan !== "free";
+        if (
+          filtered.length > 0 &&
+          profile.sms_alerts_enabled &&
+          isPaid &&
+          phone.length > 0
+        ) {
+          try {
+            const r = await sendNewViolationSMS(
+              phone,
+              property.address,
+              filtered.length,
+              complaintCount,
+              property.id
+            );
+            console.log("[cron/scan-violations] sms new-violations", {
+              propertyId,
+              to: phone,
+              success: r.success,
+              error: r.error,
+              count: filtered.length,
+            });
+          } catch (err) {
+            console.log("[cron/scan-violations] sms new-violations exception", {
+              propertyId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        const { error: clearErr } = await supabase
+          .from("violations")
+          .update({ needs_alert: false })
+          .eq("property_id", propertyId)
+          .eq("needs_alert", true);
+        if (clearErr) {
+          console.error("[cron/scan-violations] clear needs_alert error", {
+            propertyId,
+            error: clearErr.message,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error(
+      "[cron/scan-violations] new violation alert phase error",
+      err
+    );
+  }
+
+  // ----------------------------------------------------------------------------
+  // Reminder phase: due reminders (next_reminder_at <= now and is_active = true)
+  // ----------------------------------------------------------------------------
+  try {
+    const { data: dueReminders, error: dueErr } = await supabase
+      .from("violation_reminders")
+      .select("id, violation_id, user_id, deadline_date, reminder_frequency")
+      .eq("is_active", true)
+      .not("next_reminder_at", "is", null)
+      .lte("next_reminder_at", new Date().toISOString());
+
+    if (dueErr) {
+      console.error("[cron/scan-violations] due reminders query error", dueErr);
+    } else {
+      for (const r of dueReminders ?? []) {
+        const { data: violation } = await supabase
+          .from("violations")
+          .select(
+            "id, property_id, violation_description, violation_code, inspection_category"
+          )
+          .eq("id", r.violation_id)
+          .single();
+        if (!violation) continue;
+
+        const { data: property } = await supabase
+          .from("properties")
+          .select("id, address, city_id, user_id")
+          .eq("id", violation.property_id)
+          .single();
+        if (!property) continue;
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select(
+            "id, email, phone, plan, email_reminders_enabled, sms_reminders_enabled"
+          )
+          .eq("id", property.user_id)
+          .single();
+        if (!profile) continue;
+
+        const deadlineDate = String(r.deadline_date);
+        const daysRemaining = daysBetweenTodayAndDate(deadlineDate);
+        const phone = (profile.phone ?? "").trim();
+        const isPaid = profile.plan !== "free";
+
+        if (profile.email_reminders_enabled) {
+          try {
+            const out = await sendReminderEmail(
+              profile.email,
+              property.address,
+              property.id,
+              violation.violation_description ?? "Violation reminder",
+              violation.violation_code ?? "",
+              deadlineDate,
+              daysRemaining
+            );
+            console.log("[cron/scan-violations] email reminder", {
+              reminderId: r.id,
+              to: profile.email,
+              success: out.success,
+              error: out.error,
+            });
+          } catch (err) {
+            console.log("[cron/scan-violations] email reminder exception", {
+              reminderId: r.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        if (profile.sms_reminders_enabled && isPaid && phone.length > 0) {
+          try {
+            const out = await sendReminderSMS(
+              phone,
+              property.address,
+              violation.violation_description ?? "Violation reminder",
+              deadlineDate,
+              daysRemaining
+            );
+            console.log("[cron/scan-violations] sms reminder", {
+              reminderId: r.id,
+              to: phone,
+              success: out.success,
+              error: out.error,
+            });
+          } catch (err) {
+            console.log("[cron/scan-violations] sms reminder exception", {
+              reminderId: r.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        const freq = String(r.reminder_frequency);
+        const isOneOff =
+          freq === "10_days_before" ||
+          freq === "3_days_before" ||
+          freq === "1_day_before";
+
+        if (isOneOff) {
+          const deactivate = daysRemaining < 0 ? true : true;
+          const { error: updErr } = await supabase
+            .from("violation_reminders")
+            .update({
+              is_active: deactivate ? false : false,
+              next_reminder_at: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", r.id);
+          if (updErr) {
+            console.error("[cron/scan-violations] reminder update error", {
+              reminderId: r.id,
+              error: updErr.message,
+            });
+          }
+          continue;
+        }
+
+        if (freq === "every_3_days" || freq === "every_week") {
+          const next = new Date();
+          next.setDate(next.getDate() + (freq === "every_week" ? 7 : 3));
+          const { error: updErr } = await supabase
+            .from("violation_reminders")
+            .update({
+              next_reminder_at: next.toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", r.id);
+          if (updErr) {
+            console.error("[cron/scan-violations] reminder reschedule error", {
+              reminderId: r.id,
+              error: updErr.message,
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[cron/scan-violations] reminder phase error", err);
   }
 
   console.log("[cron/scan-violations] done", {
