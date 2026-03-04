@@ -128,7 +128,7 @@ export async function sendNewViolationEmail(
     });
 
     const { data, error } = await resend.emails.send({
-      from: "CasAlert <onboarding@resend.dev>",
+      from: "CasAlert <alerts@casalerts.com>",
       to: userEmail,
       subject: `New violations detected at ${propertyAddress}`,
       html,
@@ -197,7 +197,7 @@ export async function sendReminderEmail(
     });
 
     const { data, error } = await resend.emails.send({
-      from: "CasAlert <onboarding@resend.dev>",
+      from: "CasAlert <alerts@casalerts.com>",
       to: userEmail,
       subject,
       html,
