@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendNewViolationEmail } from "@/lib/email-alerts";
 
 export async function GET() {
+  console.log("RESEND_API_KEY exists:", !!process.env.RESEND_API_KEY);
   const supabase = await createClient();
   const {
     data: { user },
@@ -67,6 +68,7 @@ export async function GET() {
     [violation],
     city?.slug ?? ""
   );
+  console.log("Send result:", JSON.stringify(result));
 
   if (!result.success) {
     return NextResponse.json({ success: false, error: result.error ?? "Send failed" }, { status: 500 });

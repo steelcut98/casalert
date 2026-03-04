@@ -127,13 +127,18 @@ export async function sendNewViolationEmail(
       bodyHtml,
     });
 
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: "CasAlert <onboarding@resend.dev>",
       to: userEmail,
       subject: `New violations detected at ${propertyAddress}`,
       html,
     });
 
+    if (error) {
+      console.error("Resend error:", error);
+      return { success: false, error: error.message };
+    }
+    console.log("Email sent successfully:", data);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -191,13 +196,18 @@ export async function sendReminderEmail(
       bodyHtml,
     });
 
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: "CasAlert <onboarding@resend.dev>",
       to: userEmail,
       subject,
       html,
     });
 
+    if (error) {
+      console.error("Resend error:", error);
+      return { success: false, error: error.message };
+    }
+    console.log("Email sent successfully:", data);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
