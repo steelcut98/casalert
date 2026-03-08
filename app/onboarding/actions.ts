@@ -87,6 +87,7 @@ export async function addPropertyWithBaselineScan(
     violation_status_date?: string | null;
     violation_inspector_comments?: string | null;
     violation_ordinance?: string | null;
+    inspector_id?: string | null;
     inspection_number?: string | null;
     inspection_category?: string | null;
     inspection_status?: string | null;
