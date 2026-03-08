@@ -9,6 +9,7 @@ type Props = {
   email: string;
   profile: {
     phone: string;
+    stripe_customer_id: string | null;
     email_alerts_enabled: boolean;
     sms_alerts_enabled: boolean;
     email_reminders_enabled: boolean;
@@ -287,13 +288,18 @@ export function SettingsForm({ email, profile, plan, isPaid }: Props) {
             >
               Upgrade plan
             </Link>
-            {isPaid && (
-              <Link
-                href="/billing"
+            {profile.stripe_customer_id && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await fetch("/api/stripe/portal", { method: "POST" });
+                  const data = await res.json();
+                  if (data?.url) window.location.href = data.url;
+                }}
                 className="inline-flex rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
                 Manage billing
-              </Link>
+              </button>
             )}
           </div>
         </div>
