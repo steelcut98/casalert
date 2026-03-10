@@ -61,10 +61,14 @@ export async function POST(request: Request) {
       const subscriptionId = subscription.id;
       const priceId = subscription.items.data[0]?.price?.id;
       const plan = priceId ? getPlanFromPriceId(priceId) : "free";
+      const sub = subscription as any;
+      const subscriptionCancelAt = sub.cancel_at_period_end && sub.current_period_end
+        ? new Date(sub.current_period_end * 1000).toISOString()
+        : null;
 
       await supabase
         .from("profiles")
-        .update({ plan })
+        .update({ plan, subscription_cancel_at: subscriptionCancelAt })
         .eq("stripe_subscription_id", subscriptionId);
     } catch (err) {
       console.error("[webhooks/stripe] customer.subscription.updated handler", err);

@@ -13,7 +13,7 @@ export default async function SettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("phone, plan, stripe_customer_id, email_alerts_enabled, sms_alerts_enabled, email_reminders_enabled, sms_reminders_enabled, alert_complaint, alert_periodic, alert_registration, alert_permit")
+    .select("phone, plan, stripe_customer_id, subscription_cancel_at, email_alerts_enabled, sms_alerts_enabled, email_reminders_enabled, sms_reminders_enabled, alert_complaint, alert_periodic, alert_registration, alert_permit")
     .eq("id", user.id)
     .single();
 
@@ -66,6 +66,7 @@ export default async function SettingsPage() {
           profile={{
             phone: profile?.phone ?? "",
             stripe_customer_id: profile?.stripe_customer_id ?? null,
+            subscription_cancel_at: profile?.subscription_cancel_at ?? null,
             email_alerts_enabled: profile?.email_alerts_enabled ?? true,
             sms_alerts_enabled: profile?.sms_alerts_enabled ?? false,
             email_reminders_enabled: profile?.email_reminders_enabled ?? true,

@@ -10,6 +10,7 @@ type Props = {
   profile: {
     phone: string;
     stripe_customer_id: string | null;
+    subscription_cancel_at: string | null;
     email_alerts_enabled: boolean;
     sms_alerts_enabled: boolean;
     email_reminders_enabled: boolean;
@@ -281,6 +282,32 @@ export function SettingsForm({ email, profile, plan, isPaid }: Props) {
             {plan === "starter" && "Email and SMS alerts, more properties."}
             {plan === "pro" && "Full access: SMS alerts, priority support, unlimited properties."}
           </p>
+          {profile.subscription_cancel_at &&
+            new Date(profile.subscription_cancel_at).getTime() > Date.now() && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-600 dark:bg-amber-950/40">
+                <p className="text-sm text-amber-900 dark:text-amber-200">
+                  <span aria-hidden="true">⚠️</span>{" "}
+                  Your {plan === "starter" ? "Starter" : "Pro"} plan is scheduled to end on{" "}
+                  {new Date(profile.subscription_cancel_at).toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                  . You&apos;ll lose access to premium features after this date.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await fetch("/api/stripe/portal", { method: "POST" });
+                    const data = await res.json();
+                    if (data?.url) window.location.href = data.url;
+                  }}
+                  className="mt-2 text-sm font-medium text-amber-800 underline hover:no-underline dark:text-amber-200"
+                >
+                  Reinstate subscription
+                </button>
+              </div>
+            )}
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href="/pricing"
