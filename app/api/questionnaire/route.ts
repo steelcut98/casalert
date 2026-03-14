@@ -18,7 +18,8 @@ export async function POST(request: Request) {
       property_type,
       management_type,
       approximate_rent,
-      total_properties_owned,
+      last_inspected,
+      surprised_by_violation,
       biggest_concerns,
       referral_source,
     } = body as {
@@ -26,20 +27,30 @@ export async function POST(request: Request) {
       property_type?: string | null;
       management_type?: string | null;
       approximate_rent?: string | null;
-      total_properties_owned?: string | null;
+      last_inspected?: string | null;
+      surprised_by_violation?: string | null;
       biggest_concerns?: string[] | null;
       referral_source?: string | null;
     };
 
     const admin = createAdminClient();
 
-    if (propertyId && (property_type != null || management_type != null || approximate_rent != null)) {
+    const hasPropertyData =
+      property_type != null ||
+      management_type != null ||
+      approximate_rent != null ||
+      last_inspected != null ||
+      surprised_by_violation != null;
+
+    if (propertyId && hasPropertyData) {
       const { error: detailErr } = await admin.from("property_details").upsert(
         {
           property_id: propertyId,
           property_type: property_type ?? null,
           management_type: management_type ?? null,
           approximate_rent: approximate_rent ?? null,
+          last_inspected: last_inspected ?? null,
+          surprised_by_violation: surprised_by_violation ?? null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "property_id" }
@@ -50,13 +61,8 @@ export async function POST(request: Request) {
       }
     }
 
-    if (
-      total_properties_owned != null ||
-      biggest_concerns != null ||
-      referral_source != null
-    ) {
+    if (biggest_concerns != null || referral_source != null) {
       const updates: Record<string, unknown> = {};
-      if (total_properties_owned !== undefined) updates.total_properties_owned = total_properties_owned;
       if (biggest_concerns !== undefined) updates.biggest_concerns = biggest_concerns;
       if (referral_source !== undefined) updates.referral_source = referral_source;
 

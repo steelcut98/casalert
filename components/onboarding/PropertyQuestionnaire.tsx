@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 type Props = {
@@ -29,14 +29,24 @@ const RENT_RANGES = [
   "$5,000+",
 ];
 
-const TOTAL_PROPERTIES = ["1", "2-5", "6-10", "11-25", "25+"];
+const LAST_INSPECTED = [
+  "Never",
+  "Within 6 months",
+  "6-12 months ago",
+  "1-2 years ago",
+  "2+ years ago",
+  "Not sure",
+];
 
-const CONCERNS = [
-  "Tenant complaints",
-  "Missing deadlines",
-  "Inspector visits",
-  "Fines & legal costs",
-  "Keeping good records",
+const SURPRISED_BY_VIOLATION = ["Yes", "No"];
+
+const HELP_WITH = [
+  "Catching violations early",
+  "Avoiding fines",
+  "Tracking deadlines",
+  "Keeping compliance records",
+  "Monitoring tenant complaints",
+  "Peace of mind",
 ];
 
 const REFERRAL_SOURCES = [
@@ -48,15 +58,27 @@ const REFERRAL_SOURCES = [
   "Other",
 ];
 
+const radioClass =
+  "h-4 w-4 border-zinc-700 bg-zinc-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 dark:border-zinc-600";
+const checkboxClass =
+  "h-4 w-4 rounded border-zinc-700 bg-zinc-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 dark:border-zinc-600";
+
 export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [propertyType, setPropertyType] = useState<string>("");
   const [managementType, setManagementType] = useState<string>("");
   const [approximateRent, setApproximateRent] = useState<string>("");
-  const [totalPropertiesOwned, setTotalPropertiesOwned] = useState<string>("");
-  const [biggestConcerns, setBiggestConcerns] = useState<string[]>([]);
+  const [lastInspected, setLastInspected] = useState<string>("");
+  const [surprisedByViolation, setSurprisedByViolation] = useState<string>("");
+  const [helpWith, setHelpWith] = useState<string[]>([]);
   const [referralSource, setReferralSource] = useState<string>("");
+
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -69,9 +91,10 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
           property_type: propertyType || null,
           management_type: managementType || null,
           approximate_rent: approximateRent || null,
+          last_inspected: lastInspected || null,
+          surprised_by_violation: surprisedByViolation || null,
           ...(showUserQuestions && {
-            total_properties_owned: totalPropertiesOwned || null,
-            biggest_concerns: biggestConcerns.length > 0 ? biggestConcerns : null,
+            biggest_concerns: helpWith.length > 0 ? helpWith : null,
             referral_source: referralSource || null,
           }),
         }),
@@ -86,162 +109,224 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
     router.push("/dashboard");
   }
 
-  function toggleConcern(c: string) {
-    setBiggestConcerns((prev) =>
+  function toggleHelpWith(c: string) {
+    setHelpWith((prev) =>
       prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
     );
   }
 
   return (
-    <div className="mt-8 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-        Help us give you better insights
-      </h2>
-      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        These optional questions help us tailor your experience. Skip any you prefer not to answer.
-      </p>
-
-      <div className="mt-6 space-y-6">
-        <div>
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Property type
-          </p>
-          <div className="mt-2 flex flex-wrap gap-3">
-            {PROPERTY_TYPES.map((opt) => (
-              <label key={opt} className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="radio"
-                  name="property_type"
-                  checked={propertyType === opt}
-                  onChange={() => setPropertyType(opt)}
-                  className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500 dark:border-zinc-600"
-                />
-                <span className="text-sm text-zinc-700 dark:text-zinc-300">{opt}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            How is this property managed?
-          </p>
-          <div className="mt-2 flex flex-wrap gap-3">
-            {MANAGEMENT_TYPES.map((opt) => (
-              <label key={opt} className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="radio"
-                  name="management_type"
-                  checked={managementType === opt}
-                  onChange={() => setManagementType(opt)}
-                  className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500 dark:border-zinc-600"
-                />
-                <span className="text-sm text-zinc-700 dark:text-zinc-300">{opt}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Approximate monthly rent
-          </p>
-          <div className="mt-2 flex flex-wrap gap-3">
-            {RENT_RANGES.map((opt) => (
-              <label key={opt} className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="radio"
-                  name="approximate_rent"
-                  checked={approximateRent === opt}
-                  onChange={() => setApproximateRent(opt)}
-                  className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500 dark:border-zinc-600"
-                />
-                <span className="text-sm text-zinc-700 dark:text-zinc-300">{opt}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {showUserQuestions && (
-          <>
-            <div>
-              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                How many rental properties do you own in total?
-              </p>
-              <div className="mt-2 flex flex-wrap gap-3">
-                {TOTAL_PROPERTIES.map((opt) => (
-                  <label key={opt} className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="radio"
-                      name="total_properties"
-                      checked={totalPropertiesOwned === opt}
-                      onChange={() => setTotalPropertiesOwned(opt)}
-                      className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500 dark:border-zinc-600"
-                    />
-                    <span className="text-sm text-zinc-700 dark:text-zinc-300">{opt}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                What are your biggest compliance concerns?
-              </p>
-              <div className="mt-2 flex flex-wrap gap-3">
-                {CONCERNS.map((opt) => (
-                  <label key={opt} className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={biggestConcerns.includes(opt)}
-                      onChange={() => toggleConcern(opt)}
-                      className="h-4 w-4 rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500 dark:border-zinc-600"
-                    />
-                    <span className="text-sm text-zinc-700 dark:text-zinc-300">{opt}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                How did you hear about CasAlerts?
-              </p>
-              <div className="mt-2 flex flex-wrap gap-3">
-                {REFERRAL_SOURCES.map((opt) => (
-                  <label key={opt} className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="radio"
-                      name="referral_source"
-                      checked={referralSource === opt}
-                      onChange={() => setReferralSource(opt)}
-                      className="h-4 w-4 border-zinc-300 text-emerald-600 focus:ring-emerald-500 dark:border-zinc-600"
-                    />
-                    <span className="text-sm text-zinc-700 dark:text-zinc-300">{opt}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="questionnaire-title"
+    >
+      <div
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${
+          mounted ? "opacity-100" : "opacity-0"
+        }`}
+        aria-hidden="true"
+      />
+      <div
+        className={`relative w-full max-w-lg rounded-xl bg-zinc-900 p-8 shadow-xl transition-opacity duration-200 ${
+          mounted ? "opacity-100" : "opacity-0"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="questionnaire-title"
+          className="text-lg font-semibold text-zinc-100"
         >
-          {saving ? "Saving…" : "Save & continue"}
-        </button>
-        <button
-          type="button"
-          onClick={handleSkip}
-          className="text-sm font-medium text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
-        >
-          Skip for now
-        </button>
+          Help us give you better insights
+        </h2>
+        <p className="mt-1 text-sm text-zinc-400">
+          These optional questions help us tailor your experience.
+        </p>
+
+        <div className="mt-6 space-y-0">
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">Property type</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {PROPERTY_TYPES.map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 hover:bg-zinc-800"
+                >
+                  <input
+                    type="radio"
+                    name="property_type"
+                    checked={propertyType === opt}
+                    onChange={() => setPropertyType(opt)}
+                    className={radioClass}
+                  />
+                  <span className="text-sm text-zinc-300">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">
+              How is this property managed?
+            </p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {MANAGEMENT_TYPES.map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    type="radio"
+                    name="management_type"
+                    checked={managementType === opt}
+                    onChange={() => setManagementType(opt)}
+                    className={radioClass}
+                  />
+                  <span className="text-sm text-zinc-300">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">
+              Approximate monthly rent
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {RENT_RANGES.map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    type="radio"
+                    name="approximate_rent"
+                    checked={approximateRent === opt}
+                    onChange={() => setApproximateRent(opt)}
+                    className={radioClass}
+                  />
+                  <span className="text-sm text-zinc-300">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">
+              When was this property last inspected by the city?
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {LAST_INSPECTED.map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    type="radio"
+                    name="last_inspected"
+                    checked={lastInspected === opt}
+                    onChange={() => setLastInspected(opt)}
+                    className={radioClass}
+                  />
+                  <span className="text-sm text-zinc-300">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">
+              Have you ever been surprised by a violation you didn&apos;t know
+              about?
+            </p>
+            <div className="mt-2 flex gap-4">
+              {SURPRISED_BY_VIOLATION.map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    type="radio"
+                    name="surprised_by_violation"
+                    checked={surprisedByViolation === opt}
+                    onChange={() => setSurprisedByViolation(opt)}
+                    className={radioClass}
+                  />
+                  <span className="text-sm text-zinc-300">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {showUserQuestions && (
+            <>
+              <div className="mb-6">
+                <p className="text-sm font-medium text-zinc-300">
+                  What would you most like CasAlerts to help with?
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {HELP_WITH.map((opt) => (
+                    <label
+                      key={opt}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 hover:bg-zinc-800"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={helpWith.includes(opt)}
+                        onChange={() => toggleHelpWith(opt)}
+                        className={checkboxClass}
+                      />
+                      <span className="text-sm text-zinc-300">{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <p className="text-sm font-medium text-zinc-300">
+                  How did you hear about CasAlerts?
+                </p>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                  {REFERRAL_SOURCES.map((opt) => (
+                    <label
+                      key={opt}
+                      className="flex cursor-pointer items-center gap-2"
+                    >
+                      <input
+                        type="radio"
+                        name="referral_source"
+                        checked={referralSource === opt}
+                        onChange={() => setReferralSource(opt)}
+                        className={radioClass}
+                      />
+                      <span className="text-sm text-zinc-300">{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <p className="mt-6 text-xs text-zinc-500">All questions are optional</p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save & continue"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSkip}
+            className="text-sm text-zinc-500 underline hover:text-zinc-400"
+          >
+            Skip for now
+          </button>
+        </div>
       </div>
     </div>
   );
