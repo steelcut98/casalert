@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { validateChicagoAddress, fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
 import { validatePhiladelphiaAddress, fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 import { canAddProperty, type PlanTier } from "@/lib/plans";
@@ -192,6 +193,19 @@ export async function addPropertyWithBaselineScan(
     .from("properties")
     .update({ last_scanned_at: new Date().toISOString() })
     .eq("id", newProperty.id);
+
+  try {
+    const admin = createAdminClient();
+    await admin
+      .from("address_searches")
+      .update({ property_added: true })
+      .eq("user_id", user.id)
+      .eq("address", address.trim())
+      .eq("city", citySlug)
+      .eq("property_added", false);
+  } catch (e) {
+    console.error("[onboarding] address_searches update", e);
+  }
 
   const mostRecent = allRows[0]?.violation_date ?? null;
   const reportViolations = allRows.slice(0, 500).map((row) => ({

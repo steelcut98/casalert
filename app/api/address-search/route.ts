@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const CHICAGO_VIOLATIONS_URL = "https://data.cityofchicago.org/resource/22u3-xenr.json";
 const PHILADELPHIA_CARTO_URL = "https://phl.carto.com/api/v2/sql";
@@ -15,6 +17,9 @@ export async function GET(request: Request) {
   if (query.length < 2) {
     return NextResponse.json({ addresses: [] });
   }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const limit = 10;
 
@@ -33,6 +38,18 @@ export async function GET(request: Request) {
       const data = (await res.json()) as { rows?: { address: string }[] };
       const rows = data.rows ?? [];
       const addresses = [...new Set(rows.map((r) => r.address).filter(Boolean))].slice(0, limit);
+      if (user) {
+        try {
+          await createAdminClient().from("address_searches").insert({
+            user_id: user.id,
+            address: query,
+            city,
+            property_added: false,
+          });
+        } catch (e) {
+          console.error("[address-search] log search", e);
+        }
+      }
       return NextResponse.json({ addresses });
     } catch (err) {
       console.error("[address-search] Philadelphia", err);
@@ -65,6 +82,18 @@ export async function GET(request: Request) {
         return NextResponse.json({ addresses: [] });
       }
       const addresses = [...new Set(data.map((r) => r.address).filter(Boolean))].slice(0, limit);
+      if (user) {
+        try {
+          await createAdminClient().from("address_searches").insert({
+            user_id: user.id,
+            address: query,
+            city,
+            property_added: false,
+          });
+        } catch (e) {
+          console.error("[address-search] log search", e);
+        }
+      }
       return NextResponse.json({ addresses });
     } catch (err) {
       console.error("[address-search] Chicago", err);

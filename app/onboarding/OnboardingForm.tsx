@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { addPropertyWithBaselineScan, type OnboardingResult } from "./actions";
 import { InspectionCategoryBadge } from "@/components/InspectionCategoryBadge";
+import { PropertyQuestionnaire } from "@/components/onboarding/PropertyQuestionnaire";
 import { propertyLimitLabel } from "@/lib/plans";
 import Link from "next/link";
 
@@ -12,10 +13,12 @@ export function OnboardingForm({
   canAddProperty,
   plan,
   currentCount,
+  showUserQuestions,
 }: {
   canAddProperty: boolean;
   plan: PlanTier;
   currentCount: number;
+  showUserQuestions: boolean;
 }) {
   const [citySlug, setCitySlug] = useState("chicago");
   const [address, setAddress] = useState("");
@@ -304,12 +307,6 @@ export function OnboardingForm({
           </div>
 
           <div className="mt-6 flex gap-3">
-            <Link
-              href="/dashboard"
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              Go to dashboard
-            </Link>
             <button
               type="button"
               onClick={() => setResult(null)}
@@ -318,6 +315,11 @@ export function OnboardingForm({
               Add another property
             </button>
           </div>
+
+          <PropertyQuestionnaire
+            propertyId={result.propertyId}
+            showUserQuestions={showUserQuestions}
+          />
         </div>
       )}
     </>

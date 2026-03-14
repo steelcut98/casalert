@@ -14,7 +14,7 @@ export default async function OnboardingPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan")
+    .select("plan, total_properties_owned, biggest_concerns, referral_source")
     .eq("id", user.id)
     .single();
   const { data: properties } = await supabase
@@ -25,6 +25,12 @@ export default async function OnboardingPage() {
   const plan = profile?.plan ?? "free";
   const canAdd =
     plan === "pro" ? true : plan === "starter" ? propertyCount < 5 : propertyCount < 1;
+  const hasUserQuestionnaireData = !!(
+    (profile?.total_properties_owned ?? "").trim() ||
+    (profile?.referral_source ?? "").trim() ||
+    (Array.isArray(profile?.biggest_concerns) && profile.biggest_concerns.length > 0)
+  );
+  const showUserQuestions = propertyCount === 0 && !hasUserQuestionnaireData;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -58,6 +64,7 @@ export default async function OnboardingPage() {
           canAddProperty={canAdd}
           plan={plan}
           currentCount={propertyCount}
+          showUserQuestions={showUserQuestions}
         />
       </main>
     </div>
