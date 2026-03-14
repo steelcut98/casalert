@@ -1,3 +1,7 @@
+/**
+ * REMINDER: Run in Supabase SQL Editor if using property profile (enrichment):
+ * ALTER TABLE public.property_details ADD COLUMN IF NOT EXISTS square_footage NUMERIC, ADD COLUMN IF NOT EXISTS assessed_value NUMERIC;
+ */
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
@@ -38,6 +42,31 @@ export default async function PropertyDetailPage({
     .eq("id", user.id)
     .single();
   const canExportCsv = (profile?.plan ?? "free") !== "free";
+
+  const { data: propertyDetailsRow } = await supabase
+    .from("property_details")
+    .select("year_built, property_type, unit_count, square_footage, assessed_value")
+    .eq("property_id", propertyId)
+    .maybeSingle();
+  const toNum = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const propertyDetails =
+    propertyDetailsRow &&
+    (propertyDetailsRow.year_built != null ||
+      propertyDetailsRow.property_type != null ||
+      propertyDetailsRow.unit_count != null ||
+      propertyDetailsRow.square_footage != null ||
+      propertyDetailsRow.assessed_value != null)
+      ? {
+          year_built: toNum(propertyDetailsRow.year_built),
+          property_type: propertyDetailsRow.property_type ?? null,
+          units: toNum(propertyDetailsRow.unit_count),
+          square_footage: toNum(propertyDetailsRow.square_footage),
+          assessed_value: toNum(propertyDetailsRow.assessed_value),
+        }
+      : null;
 
   const { data: violations, error: violationsError } = await supabase
     .from("violations")
@@ -156,6 +185,7 @@ export default async function PropertyDetailPage({
           propertyGroup={property.property_group}
           remindersByViolation={Object.fromEntries(remindersByViolation)}
           citySlug={city?.slug ?? "chicago"}
+          propertyDetails={propertyDetails}
         />
       </main>
     </div>

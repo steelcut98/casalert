@@ -240,6 +240,55 @@ export function OnboardingForm({
             </div>
           </div>
 
+          {result.propertyDetails &&
+            (result.propertyDetails.year_built != null ||
+              result.propertyDetails.property_type != null ||
+              result.propertyDetails.units != null ||
+              result.propertyDetails.square_footage != null ||
+              result.propertyDetails.assessed_value != null) && (
+              <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Property profile
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                  {result.propertyDetails.year_built != null && (
+                    <span>
+                      <span className="text-zinc-500">Year built:</span>{" "}
+                      <span className="text-zinc-100">{result.propertyDetails.year_built}</span>
+                    </span>
+                  )}
+                  {result.propertyDetails.property_type != null && (
+                    <span>
+                      <span className="text-zinc-500">Property type:</span>{" "}
+                      <span className="text-zinc-100">{result.propertyDetails.property_type}</span>
+                    </span>
+                  )}
+                  {result.propertyDetails.units != null && (
+                    <span>
+                      <span className="text-zinc-500">Units:</span>{" "}
+                      <span className="text-zinc-100">{result.propertyDetails.units}</span>
+                    </span>
+                  )}
+                  {result.propertyDetails.square_footage != null && (
+                    <span>
+                      <span className="text-zinc-500">Living area:</span>{" "}
+                      <span className="text-zinc-100">
+                        {result.propertyDetails.square_footage.toLocaleString()} sq ft
+                      </span>
+                    </span>
+                  )}
+                  {result.propertyDetails.assessed_value != null && (
+                    <span>
+                      <span className="text-zinc-500">Assessed value:</span>{" "}
+                      <span className="text-zinc-100">
+                        ${result.propertyDetails.assessed_value.toLocaleString()}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
           <div className="mt-4">
             <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
               By inspection category

@@ -1,13 +1,27 @@
 "use server";
 
+/**
+ * REMINDER: Run in Supabase SQL Editor before using enrichment:
+ * ALTER TABLE public.property_details ADD COLUMN IF NOT EXISTS square_footage NUMERIC, ADD COLUMN IF NOT EXISTS assessed_value NUMERIC;
+ */
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getPropertyDetails } from "@/lib/property-enrichment";
 import { validateChicagoAddress, fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
 import { validatePhiladelphiaAddress, fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 import { canAddProperty, type PlanTier } from "@/lib/plans";
 import { revalidatePath } from "next/cache";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
+
+export type PropertyDetailsEnrichment = {
+  year_built: number | null;
+  units: number | null;
+  square_footage: number | null;
+  assessed_value: number | null;
+  property_type: string | null;
+  lot_size: number | null;
+};
 
 export type OnboardingResult =
   | {
@@ -30,6 +44,7 @@ export type OnboardingResult =
         inspection_category: string | null;
         address: string | null;
       }>;
+      propertyDetails: PropertyDetailsEnrichment | null;
     }
   | { success: false; error: string };
 
@@ -207,6 +222,29 @@ export async function addPropertyWithBaselineScan(
     console.error("[onboarding] address_searches update", e);
   }
 
+  let propertyDetails: PropertyDetailsEnrichment | null = null;
+  try {
+    const enrichment = await getPropertyDetails(address.trim(), citySlug);
+    if (enrichment) {
+      const admin = createAdminClient();
+      await admin.from("property_details").upsert(
+        {
+          property_id: newProperty.id,
+          property_type: enrichment.property_type ?? null,
+          unit_count: enrichment.units != null ? String(enrichment.units) : null,
+          year_built: enrichment.year_built != null ? String(enrichment.year_built) : null,
+          square_footage: enrichment.square_footage ?? null,
+          assessed_value: enrichment.assessed_value ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "property_id" }
+      );
+      propertyDetails = enrichment;
+    }
+  } catch (e) {
+    console.error("[onboarding] enrichment", e);
+  }
+
   const mostRecent = allRows[0]?.violation_date ?? null;
   const reportViolations = allRows.slice(0, 500).map((row) => ({
     id: row.id,
@@ -233,5 +271,6 @@ export async function addPropertyWithBaselineScan(
     byCategory,
     mostRecentDate: mostRecent,
     violations: reportViolations,
+    propertyDetails,
   };
 }

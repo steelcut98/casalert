@@ -69,6 +69,14 @@ function daysUntil(deadlineStr: string): number {
   return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+type PropertyDetailsDisplay = {
+  year_built: number | null;
+  property_type: string | null;
+  units: number | null;
+  square_footage: number | null;
+  assessed_value: number | null;
+};
+
 export function PropertyDetailClient({
   propertyId,
   violations,
@@ -78,6 +86,7 @@ export function PropertyDetailClient({
   propertyGroup,
   remindersByViolation,
   citySlug = "chicago",
+  propertyDetails = null,
 }: {
   propertyId: string;
   violations: ViolationRow[];
@@ -87,6 +96,7 @@ export function PropertyDetailClient({
   propertyGroup: string | null;
   remindersByViolation: Record<string, ReminderInfo>;
   citySlug?: string;
+  propertyDetails?: PropertyDetailsDisplay | null;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -583,6 +593,55 @@ export function PropertyDetailClient({
           </p>
         </div>
       )}
+
+      {propertyDetails &&
+        (propertyDetails.year_built != null ||
+          propertyDetails.property_type != null ||
+          propertyDetails.units != null ||
+          propertyDetails.square_footage != null ||
+          propertyDetails.assessed_value != null) && (
+          <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Property profile
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {propertyDetails.year_built != null && (
+                <span>
+                  <span className="text-zinc-500">Year built:</span>{" "}
+                  <span className="text-zinc-100">{propertyDetails.year_built}</span>
+                </span>
+              )}
+              {propertyDetails.property_type != null && (
+                <span>
+                  <span className="text-zinc-500">Property type:</span>{" "}
+                  <span className="text-zinc-100">{propertyDetails.property_type}</span>
+                </span>
+              )}
+              {propertyDetails.units != null && (
+                <span>
+                  <span className="text-zinc-500">Units:</span>{" "}
+                  <span className="text-zinc-100">{propertyDetails.units}</span>
+                </span>
+              )}
+              {propertyDetails.square_footage != null && (
+                <span>
+                  <span className="text-zinc-500">Living area:</span>{" "}
+                  <span className="text-zinc-100">
+                    {propertyDetails.square_footage.toLocaleString()} sq ft
+                  </span>
+                </span>
+              )}
+              {propertyDetails.assessed_value != null && (
+                <span>
+                  <span className="text-zinc-500">Assessed value:</span>{" "}
+                  <span className="text-zinc-100">
+                    ${propertyDetails.assessed_value.toLocaleString()}
+                  </span>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
       <div className="mt-4 flex flex-wrap items-center gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
         <span className="text-sm font-medium text-red-700 dark:text-red-400">
