@@ -26,7 +26,7 @@ export default function HomePage() {
                 A Violation Was Filed Against Your Property. Did You Know?
               </h1>
               <p className="mt-4 max-w-2xl text-base text-zinc-400">
-                Most landlords find out about code violations weeks after they&apos;re filed — when it&apos;s already a legal problem. CasAlerts monitors Chicago and Philadelphia city databases and alerts you within hours by email or SMS.
+                Most landlords find out about code violations weeks after they&apos;re filed — when fines are already accruing and tenants have legal leverage. CasAlerts monitors Chicago and Philadelphia city databases and alerts you within hours.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
@@ -52,7 +52,7 @@ export default function HomePage() {
                   🔴 New Violation Detected
                 </p>
                 <p className="mt-2 font-medium text-zinc-100">
-                  3223 N HARLEM AVE, Chicago
+                  1847 W MADISON ST, Chicago
                 </p>
                 <p className="mt-1 text-sm text-red-400">
                   COMPLAINT — Failure to maintain exterior walls
@@ -61,7 +61,7 @@ export default function HomePage() {
                   Filed: March 8, 2026
                 </p>
                 <p className="text-xs text-zinc-500">
-                  Inspector: J. Rodriguez
+                  Inspector: M. Chen
                 </p>
               </div>
             </div>
@@ -256,7 +256,7 @@ export default function HomePage() {
             </div>
           </div>
           <p className="mt-6 text-center text-sm text-zinc-500">
-            Expanding to Los Angeles, Houston, and Atlanta in 2026.
+            Coming soon: Los Angeles, Houston, Atlanta, and more.
           </p>
         </div>
       </section>
@@ -271,7 +271,7 @@ export default function HomePage() {
             Every Day Without Monitoring Is a Day You&apos;re Exposed
           </h2>
           <p className="mt-4 text-zinc-400">
-            It takes 30 seconds to add your first property. You&apos;ll see every open violation instantly.
+            Join landlords who stopped guessing and started monitoring. Add your first property in 30 seconds.
           </p>
           <Link
             href="/login"

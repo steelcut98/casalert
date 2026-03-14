@@ -61,7 +61,7 @@ export function PricingSection({ fontClassName }: { fontClassName: string }) {
               href="/login"
               className="mt-6 block w-full rounded-lg border border-zinc-600 py-2.5 text-center text-sm font-medium text-zinc-300 transition hover:bg-zinc-800"
             >
-              Get started
+              Get started free
             </Link>
           </div>
 
@@ -113,7 +113,7 @@ export function PricingSection({ fontClassName }: { fontClassName: string }) {
               href="/login"
               className="mt-6 block w-full rounded-lg bg-emerald-600 py-2.5 text-center text-sm font-medium text-white transition hover:bg-emerald-500"
             >
-              Upgrade to Pro
+              Go Pro
             </Link>
           </div>
         </div>
