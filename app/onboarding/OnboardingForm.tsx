@@ -241,53 +241,59 @@ export function OnboardingForm({
           </div>
 
           {result.propertyDetails &&
-            (result.propertyDetails.year_built != null ||
-              result.propertyDetails.property_type != null ||
-              result.propertyDetails.units != null ||
-              result.propertyDetails.square_footage != null ||
-              result.propertyDetails.assessed_value != null) && (
-              <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Property profile
-                </p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                  {result.propertyDetails.year_built != null && (
-                    <span>
-                      <span className="text-zinc-500">Year built:</span>{" "}
-                      <span className="text-zinc-100">{result.propertyDetails.year_built}</span>
-                    </span>
-                  )}
-                  {result.propertyDetails.property_type != null && (
-                    <span>
-                      <span className="text-zinc-500">Property type:</span>{" "}
-                      <span className="text-zinc-100">{result.propertyDetails.property_type}</span>
-                    </span>
-                  )}
-                  {result.propertyDetails.units != null && (
-                    <span>
-                      <span className="text-zinc-500">Units:</span>{" "}
-                      <span className="text-zinc-100">{result.propertyDetails.units}</span>
-                    </span>
-                  )}
-                  {result.propertyDetails.square_footage != null && (
-                    <span>
-                      <span className="text-zinc-500">Living area:</span>{" "}
-                      <span className="text-zinc-100">
-                        {result.propertyDetails.square_footage.toLocaleString()} sq ft
+            (() => {
+              const d = result.propertyDetails;
+              const hasYear = d.year_built != null && d.year_built !== 0;
+              const hasType = d.property_type != null && d.property_type !== "";
+              const hasUnits = d.units != null && d.units !== 0;
+              const hasSqft = d.square_footage != null && d.square_footage !== 0;
+              const hasValue = d.assessed_value != null && d.assessed_value !== 0;
+              const hasAny = hasYear || hasType || hasUnits || hasSqft || hasValue;
+              if (!hasAny) return null;
+              return (
+                <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    Property profile
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                    {hasYear && (
+                      <span>
+                        <span className="text-zinc-500">Year built:</span>{" "}
+                        <span className="text-zinc-100">{d.year_built}</span>
                       </span>
-                    </span>
-                  )}
-                  {result.propertyDetails.assessed_value != null && (
-                    <span>
-                      <span className="text-zinc-500">Assessed value:</span>{" "}
-                      <span className="text-zinc-100">
-                        ${result.propertyDetails.assessed_value.toLocaleString()}
+                    )}
+                    {hasType && (
+                      <span>
+                        <span className="text-zinc-500">Property type:</span>{" "}
+                        <span className="text-zinc-100">{d.property_type}</span>
                       </span>
-                    </span>
-                  )}
+                    )}
+                    {hasUnits && (
+                      <span>
+                        <span className="text-zinc-500">Units:</span>{" "}
+                        <span className="text-zinc-100">{d.units}</span>
+                      </span>
+                    )}
+                    {hasSqft && (
+                      <span>
+                        <span className="text-zinc-500">Living area:</span>{" "}
+                        <span className="text-zinc-100">
+                          {d.square_footage!.toLocaleString()} sq ft
+                        </span>
+                      </span>
+                    )}
+                    {hasValue && (
+                      <span>
+                        <span className="text-zinc-500">Assessed value:</span>{" "}
+                        <span className="text-zinc-100">
+                          ${d.assessed_value!.toLocaleString()}
+                        </span>
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
           <div className="mt-4">
             <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">

@@ -52,21 +52,32 @@ export default async function PropertyDetailPage({
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
-  const propertyDetails =
-    propertyDetailsRow &&
-    (propertyDetailsRow.year_built != null ||
-      propertyDetailsRow.property_type != null ||
-      propertyDetailsRow.unit_count != null ||
-      propertyDetailsRow.square_footage != null ||
-      propertyDetailsRow.assessed_value != null)
-      ? {
-          year_built: toNum(propertyDetailsRow.year_built),
-          property_type: propertyDetailsRow.property_type ?? null,
-          units: toNum(propertyDetailsRow.unit_count),
-          square_footage: toNum(propertyDetailsRow.square_footage),
-          assessed_value: toNum(propertyDetailsRow.assessed_value),
-        }
-      : null;
+  const cleanStr = (v: unknown) => {
+    const s = v != null ? String(v).trim() : "";
+    return s.length > 0 ? s : null;
+  };
+  const cleanNum = (v: unknown) => {
+    const n = toNum(v);
+    return n != null && n !== 0 ? n : null;
+  };
+  const raw = propertyDetailsRow
+    ? {
+        year_built: cleanNum(propertyDetailsRow.year_built),
+        property_type: cleanStr(propertyDetailsRow.property_type),
+        units: cleanNum(propertyDetailsRow.unit_count),
+        square_footage: cleanNum(propertyDetailsRow.square_footage),
+        assessed_value: cleanNum(propertyDetailsRow.assessed_value),
+        lot_size: cleanNum((propertyDetailsRow as { lot_size?: unknown }).lot_size),
+      }
+    : null;
+  const hasAny =
+    raw &&
+    (raw.year_built != null ||
+      raw.property_type != null ||
+      raw.units != null ||
+      raw.square_footage != null ||
+      raw.lot_size != null);
+  const propertyDetails = hasAny ? raw : null;
 
   const { data: violations, error: violationsError } = await supabase
     .from("violations")

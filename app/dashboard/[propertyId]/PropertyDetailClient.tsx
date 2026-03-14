@@ -74,7 +74,8 @@ type PropertyDetailsDisplay = {
   property_type: string | null;
   units: number | null;
   square_footage: number | null;
-  assessed_value: number | null;
+  assessed_value?: number | null;
+  lot_size?: number | null;
 };
 
 export function PropertyDetailClient({
@@ -114,6 +115,7 @@ export function PropertyDetailClient({
   const [bulkFrequency, setBulkFrequency] = useState<ReminderFrequency>("3_days_before");
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [bulkConfirmOverride, setBulkConfirmOverride] = useState(false);
+  const [propertyInfoOpen, setPropertyInfoOpen] = useState(false);
 
   useEffect(() => {
     if (!infoPopoverAnchor) return;
@@ -551,8 +553,103 @@ export function PropertyDetailClient({
     );
   }
 
+  const hasAnyPropertyInfo =
+    propertyDetails &&
+    (propertyDetails.year_built != null ||
+      (propertyDetails.property_type != null && propertyDetails.property_type !== "") ||
+      propertyDetails.units != null ||
+      propertyDetails.square_footage != null ||
+      (propertyDetails.lot_size != null && propertyDetails.lot_size !== 0));
+
   return (
     <div className="mt-6">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setPropertyInfoOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-700"
+        >
+          <span aria-hidden>🏠</span>
+          Property Info
+        </button>
+      </div>
+
+      {propertyInfoOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50"
+          aria-modal="true"
+          role="dialog"
+          aria-labelledby="property-info-title"
+          onClick={() => setPropertyInfoOpen(false)}
+        >
+          <div
+            className="fixed left-1/2 top-1/2 z-50 max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 id="property-info-title" className="text-lg font-semibold text-zinc-100">
+                Property Information
+              </h2>
+              <button
+                type="button"
+                onClick={() => setPropertyInfoOpen(false)}
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="mt-4 space-y-2 text-sm">
+              {hasAnyPropertyInfo ? (
+                <>
+                  {propertyDetails!.year_built != null && propertyDetails!.year_built !== 0 && (
+                    <p>
+                      <span className="text-zinc-500">Year built:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.year_built}</span>
+                    </p>
+                  )}
+                  {propertyDetails!.property_type != null && propertyDetails!.property_type !== "" && (
+                    <p>
+                      <span className="text-zinc-500">Property type:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.property_type}</span>
+                    </p>
+                  )}
+                  {propertyDetails!.units != null && propertyDetails!.units !== 0 && (
+                    <p>
+                      <span className="text-zinc-500">Units:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.units}</span>
+                    </p>
+                  )}
+                  {propertyDetails!.square_footage != null && propertyDetails!.square_footage !== 0 && (
+                    <p>
+                      <span className="text-zinc-500">Living area:</span>{" "}
+                      <span className="text-zinc-100">
+                        {propertyDetails!.square_footage.toLocaleString()} sq ft
+                      </span>
+                    </p>
+                  )}
+                  {propertyDetails!.lot_size != null && propertyDetails!.lot_size !== 0 && (
+                    <p>
+                      <span className="text-zinc-500">Lot size:</span>{" "}
+                      <span className="text-zinc-100">
+                        {propertyDetails!.lot_size.toLocaleString()} sq ft
+                      </span>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-zinc-300">
+                  Property details are not yet available for this address. We&apos;re working on expanding our data coverage.
+                </p>
+              )}
+            </div>
+            <p className="mt-4 text-xs text-zinc-500">Source: Public property records</p>
+          </div>
+        </div>
+      )}
+
       {(violationsQueryError || (violations.length === 0 && !violationsQueryError)) && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
           {violationsQueryError ? (
@@ -593,55 +690,6 @@ export function PropertyDetailClient({
           </p>
         </div>
       )}
-
-      {propertyDetails &&
-        (propertyDetails.year_built != null ||
-          propertyDetails.property_type != null ||
-          propertyDetails.units != null ||
-          propertyDetails.square_footage != null ||
-          propertyDetails.assessed_value != null) && (
-          <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Property profile
-            </p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              {propertyDetails.year_built != null && (
-                <span>
-                  <span className="text-zinc-500">Year built:</span>{" "}
-                  <span className="text-zinc-100">{propertyDetails.year_built}</span>
-                </span>
-              )}
-              {propertyDetails.property_type != null && (
-                <span>
-                  <span className="text-zinc-500">Property type:</span>{" "}
-                  <span className="text-zinc-100">{propertyDetails.property_type}</span>
-                </span>
-              )}
-              {propertyDetails.units != null && (
-                <span>
-                  <span className="text-zinc-500">Units:</span>{" "}
-                  <span className="text-zinc-100">{propertyDetails.units}</span>
-                </span>
-              )}
-              {propertyDetails.square_footage != null && (
-                <span>
-                  <span className="text-zinc-500">Living area:</span>{" "}
-                  <span className="text-zinc-100">
-                    {propertyDetails.square_footage.toLocaleString()} sq ft
-                  </span>
-                </span>
-              )}
-              {propertyDetails.assessed_value != null && (
-                <span>
-                  <span className="text-zinc-500">Assessed value:</span>{" "}
-                  <span className="text-zinc-100">
-                    ${propertyDetails.assessed_value.toLocaleString()}
-                  </span>
-                </span>
-              )}
-            </div>
-          </div>
-        )}
 
       <div className="mt-4 flex flex-wrap items-center gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
         <span className="text-sm font-medium text-red-700 dark:text-red-400">
