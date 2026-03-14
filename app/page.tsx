@@ -52,7 +52,7 @@ export default function HomePage() {
                   🔴 New Violation Detected
                 </p>
                 <p className="mt-2 font-medium text-zinc-100">
-                  1847 W MADISON ST, Chicago
+                  4721 N CEDARFIELD AVE, Chicago
                 </p>
                 <p className="mt-1 text-sm text-red-400">
                   COMPLAINT — Failure to maintain exterior walls
@@ -243,7 +243,7 @@ export default function HomePage() {
                 Chicago, IL
               </h3>
               <p className="mt-2 text-sm text-zinc-400">
-                Building Code Violations via Chicago Open Data Portal (Socrata API). Updated daily. Covers COMPLAINT, PERIODIC, REGISTRATION, and PERMIT inspections.
+                We monitor the City of Chicago&apos;s official building code violation database — updated daily. Covers tenant complaints, routine inspections, registration issues, and permit violations.
               </p>
             </div>
             <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
@@ -251,7 +251,7 @@ export default function HomePage() {
                 Philadelphia, PA
               </h3>
               <p className="mt-2 text-sm text-zinc-400">
-                L&I Code Violations via OpenDataPhilly (Carto API). Updated daily. Covers all Department of Licenses & Inspections enforcement actions.
+                We monitor Philadelphia&apos;s Department of Licenses & Inspections enforcement database — updated daily. Covers all code enforcement actions filed against residential properties.
               </p>
             </div>
           </div>

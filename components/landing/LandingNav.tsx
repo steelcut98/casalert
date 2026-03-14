@@ -49,7 +49,7 @@ export function LandingNav({ fontClassName }: { fontClassName: string }) {
             href="/login"
             className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-800 hover:text-white"
           >
-            Sign in
+            Sign up free
           </Link>
         </div>
 
@@ -91,7 +91,7 @@ export function LandingNav({ fontClassName }: { fontClassName: string }) {
               onClick={() => setMobileOpen(false)}
               className="rounded-lg border border-zinc-600 px-3 py-2 text-center text-sm font-medium text-zinc-300"
             >
-              Sign in
+              Sign up free
             </Link>
           </div>
         </div>
