@@ -3,10 +3,11 @@
 /**
  * REMINDER: Run in Supabase SQL Editor before using enrichment:
  * ALTER TABLE public.property_details ADD COLUMN IF NOT EXISTS square_footage NUMERIC, ADD COLUMN IF NOT EXISTS assessed_value NUMERIC;
+ * ALTER TABLE public.property_details ADD COLUMN IF NOT EXISTS bedrooms NUMERIC, ADD COLUMN IF NOT EXISTS bathrooms NUMERIC, ADD COLUMN IF NOT EXISTS stories NUMERIC, ADD COLUMN IF NOT EXISTS exterior_condition TEXT;
  */
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPropertyDetails } from "@/lib/property-enrichment";
+import { getPropertyDetails, checkChicagoAddressInPermits, checkPhiladelphiaAddressInOPA } from "@/lib/property-enrichment";
 import { validateChicagoAddress, fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
 import { validatePhiladelphiaAddress, fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 import { canAddProperty, type PlanTier } from "@/lib/plans";
@@ -21,6 +22,10 @@ export type PropertyDetailsEnrichment = {
   assessed_value: number | null;
   property_type: string | null;
   lot_size: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  stories?: number | null;
+  exterior_condition?: string | null;
 };
 
 export type OnboardingResult =
@@ -45,6 +50,8 @@ export type OnboardingResult =
         address: string | null;
       }>;
       propertyDetails: PropertyDetailsEnrichment | null;
+      /** Shown when address was not found in city property records (permits/OPA). */
+      warning?: string | null;
     }
   | { success: false; error: string };
 
@@ -111,7 +118,14 @@ export async function addPropertyWithBaselineScan(
     property_group?: string | null;
   }> = [];
 
+  let warning: string | null = null;
+
   if (citySlug === "chicago") {
+    const foundInPermits = await checkChicagoAddressInPermits(address.trim());
+    if (!foundInPermits) {
+      warning =
+        "This address wasn't found in Chicago property records. You can still add it and we'll monitor for violations.";
+    }
     const validation = await validateChicagoAddress(address.trim(), {
       appToken: APP_TOKEN,
     });
@@ -125,6 +139,11 @@ export async function addPropertyWithBaselineScan(
       { appToken: APP_TOKEN }
     );
   } else if (citySlug === "philadelphia") {
+    const foundInOPA = await checkPhiladelphiaAddressInOPA(address.trim());
+    if (!foundInOPA) {
+      warning =
+        "This address wasn't found in Philadelphia property records. You can still add it and we'll monitor for violations.";
+    }
     const validation = await validatePhiladelphiaAddress(address.trim());
     if (!validation.valid) {
       return { success: false, error: validation.error };
@@ -235,6 +254,10 @@ export async function addPropertyWithBaselineScan(
           year_built: enrichment.year_built != null ? String(enrichment.year_built) : null,
           square_footage: enrichment.square_footage ?? null,
           assessed_value: enrichment.assessed_value ?? null,
+          bedrooms: enrichment.bedrooms ?? null,
+          bathrooms: enrichment.bathrooms ?? null,
+          stories: enrichment.stories ?? null,
+          exterior_condition: enrichment.exterior_condition ?? null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "property_id" }
@@ -256,6 +279,12 @@ export async function addPropertyWithBaselineScan(
     address: row.address ?? null,
   }));
 
+  if (allRows.length === 0) {
+    const noViolationsNote =
+      "No existing violations found — we'll start monitoring this address for any new filings.";
+    warning = warning ? `${warning} ${noViolationsNote}` : noViolationsNote;
+  }
+
   revalidatePath("/dashboard");
   revalidatePath("/onboarding");
 
@@ -272,5 +301,6 @@ export async function addPropertyWithBaselineScan(
     mostRecentDate: mostRecent,
     violations: reportViolations,
     propertyDetails,
+    warning: warning ?? null,
   };
 }

@@ -206,6 +206,11 @@ export function OnboardingForm({
               </span>
             )}
           </p>
+          {result.warning && (
+            <p className="mt-2 text-sm text-amber-700 dark:text-amber-200">
+              {result.warning}
+            </p>
+          )}
 
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div className="rounded-lg bg-zinc-100 p-3 dark:bg-zinc-800">

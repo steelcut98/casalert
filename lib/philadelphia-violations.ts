@@ -109,17 +109,19 @@ async function runQuery(sql: string): Promise<PhiladelphiaViolationRow[]> {
 }
 
 /**
- * Validate that an address exists (at least one row). Returns sample for property_group (opa_account_num).
+ * Validate address: fetches one violation row by address if any. Never rejects for "not found" —
+ * returns valid: true with propertyGroup from first row if any, else null. Caller should check
+ * OPA property DB separately for a warning when address is not in property records.
  */
 export async function validatePhiladelphiaAddress(
   address: string
-): Promise<{ valid: true; propertyGroup: string | null; sample: PhiladelphiaViolationNormalized } | { valid: false; error: string }> {
+): Promise<{ valid: true; propertyGroup: string | null; sample: PhiladelphiaViolationNormalized | null } | { valid: false; error: string }> {
   const addressConditions = buildAddressLikeConditions(address);
   const sql = `SELECT violationnumber, violationdate, violationresolutiondate, violationcode, violationcodetitle, violationstatus, casetype, caseresponsibility, violationresolutioncode, address, opa_account_num FROM violations WHERE ${addressConditions} AND violationdate >= '2020-01-01' ORDER BY violationdate DESC LIMIT 1`;
   try {
     const rows = await runQuery(sql);
     if (rows.length === 0) {
-      return { valid: false, error: "Address not found in Philadelphia L&I violations database." };
+      return { valid: true, propertyGroup: null, sample: null };
     }
     const sample = normalizeRow(rows[0]);
     return {

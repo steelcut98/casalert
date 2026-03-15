@@ -120,18 +120,19 @@ async function fetchAllWithRetry(
 }
 
 /**
- * Validate that an address exists in the Chicago building violations database
- * (at least one row). Returns the first row so caller can read property_group.
+ * Validate address: fetches first page of violations by address. Never rejects for "not found" —
+ * returns valid: true with propertyGroup from first row if any, else null. Caller should check
+ * property DB separately for a warning when address is not in permits.
  */
 export async function validateChicagoAddress(
   address: string,
   opts: { appToken?: string } = {}
-): Promise<{ valid: true; propertyGroup: string | null; sample: ChicagoViolationRow } | { valid: false; error: string }> {
+): Promise<{ valid: true; propertyGroup: string | null; sample: ChicagoViolationRow | null } | { valid: false; error: string }> {
   const where = buildWhereAddress(address);
   try {
     const page = await fetchPage(where, 0, opts);
     if (page.length === 0) {
-      return { valid: false, error: "Address not found in Chicago building violations database." };
+      return { valid: true, propertyGroup: null, sample: null };
     }
     const sample = page[0];
     return {

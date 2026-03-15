@@ -76,6 +76,10 @@ type PropertyDetailsDisplay = {
   square_footage: number | null;
   assessed_value?: number | null;
   lot_size?: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  stories?: number | null;
+  exterior_condition?: string | null;
 };
 
 export function PropertyDetailClient({
@@ -559,7 +563,28 @@ export function PropertyDetailClient({
       (propertyDetails.property_type != null && propertyDetails.property_type !== "") ||
       propertyDetails.units != null ||
       propertyDetails.square_footage != null ||
-      (propertyDetails.lot_size != null && propertyDetails.lot_size !== 0));
+      (propertyDetails.lot_size != null && propertyDetails.lot_size !== 0) ||
+      (propertyDetails.bedrooms != null && propertyDetails.bedrooms !== 0) ||
+      (propertyDetails.bathrooms != null && propertyDetails.bathrooms !== 0) ||
+      (propertyDetails.stories != null && propertyDetails.stories !== 0) ||
+      (propertyDetails.exterior_condition != null && propertyDetails.exterior_condition !== ""));
+
+  /** Philadelphia exterior_condition: 1=best, 7=worst. */
+  const exteriorConditionLabel = (v: string | null | undefined): string | null => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return v;
+    const map: Record<number, string> = {
+      1: "Excellent",
+      2: "Good",
+      3: "Fair",
+      4: "Poor",
+      5: "Critical",
+      6: "Uninhabitable",
+      7: "N/A",
+    };
+    return map[n] ?? v;
+  };
 
   return (
     <div className="mt-6">
@@ -635,6 +660,32 @@ export function PropertyDetailClient({
                       <span className="text-zinc-500">Lot size:</span>{" "}
                       <span className="text-zinc-100">
                         {propertyDetails!.lot_size.toLocaleString()} sq ft
+                      </span>
+                    </p>
+                  )}
+                  {propertyDetails!.bedrooms != null && propertyDetails!.bedrooms !== 0 && (
+                    <p>
+                      <span className="text-zinc-500">Bedrooms:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.bedrooms}</span>
+                    </p>
+                  )}
+                  {propertyDetails!.bathrooms != null && propertyDetails!.bathrooms !== 0 && (
+                    <p>
+                      <span className="text-zinc-500">Bathrooms:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.bathrooms}</span>
+                    </p>
+                  )}
+                  {propertyDetails!.stories != null && propertyDetails!.stories !== 0 && (
+                    <p>
+                      <span className="text-zinc-500">Stories:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.stories}</span>
+                    </p>
+                  )}
+                  {exteriorConditionLabel(propertyDetails!.exterior_condition) != null && (
+                    <p>
+                      <span className="text-zinc-500">Exterior condition:</span>{" "}
+                      <span className="text-zinc-100">
+                        {exteriorConditionLabel(propertyDetails!.exterior_condition)}
                       </span>
                     </p>
                   )}

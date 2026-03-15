@@ -1,6 +1,7 @@
 /**
  * REMINDER: Run in Supabase SQL Editor if using property profile (enrichment):
  * ALTER TABLE public.property_details ADD COLUMN IF NOT EXISTS square_footage NUMERIC, ADD COLUMN IF NOT EXISTS assessed_value NUMERIC;
+ * ALTER TABLE public.property_details ADD COLUMN IF NOT EXISTS bedrooms NUMERIC, ADD COLUMN IF NOT EXISTS bathrooms NUMERIC, ADD COLUMN IF NOT EXISTS stories NUMERIC, ADD COLUMN IF NOT EXISTS exterior_condition TEXT;
  */
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
@@ -45,7 +46,7 @@ export default async function PropertyDetailPage({
 
   const { data: propertyDetailsRow } = await supabase
     .from("property_details")
-    .select("year_built, property_type, unit_count, square_footage, assessed_value")
+    .select("year_built, property_type, unit_count, square_footage, assessed_value, bedrooms, bathrooms, stories, exterior_condition")
     .eq("property_id", propertyId)
     .maybeSingle();
   const toNum = (v: unknown) => {
@@ -68,6 +69,10 @@ export default async function PropertyDetailPage({
         square_footage: cleanNum(propertyDetailsRow.square_footage),
         assessed_value: cleanNum(propertyDetailsRow.assessed_value),
         lot_size: cleanNum((propertyDetailsRow as { lot_size?: unknown }).lot_size),
+        bedrooms: cleanNum(propertyDetailsRow.bedrooms),
+        bathrooms: cleanNum(propertyDetailsRow.bathrooms),
+        stories: cleanNum(propertyDetailsRow.stories),
+        exterior_condition: cleanStr(propertyDetailsRow.exterior_condition),
       }
     : null;
   const hasAny =
@@ -76,7 +81,11 @@ export default async function PropertyDetailPage({
       raw.property_type != null ||
       raw.units != null ||
       raw.square_footage != null ||
-      raw.lot_size != null);
+      raw.lot_size != null ||
+      raw.bedrooms != null ||
+      raw.bathrooms != null ||
+      raw.stories != null ||
+      raw.exterior_condition != null);
   const propertyDetails = hasAny ? raw : null;
 
   const { data: violations, error: violationsError } = await supabase
