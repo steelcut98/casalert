@@ -20,6 +20,26 @@ function keepStr(v: string | null | undefined): string | null {
   return s.length > 0 ? s : null;
 }
 
+function mapConditionCode(code: unknown): string | null {
+  if (code == null) return null;
+  const s = String(code).trim();
+  if (s.length === 0) return null;
+  const n = Number(s);
+  if (Number.isFinite(n)) {
+    if (n === 0 || n === 1) return null;
+    const map: Record<number, string> = {
+      2: "New / Rehabbed",
+      3: "Above Average",
+      4: "Average",
+      5: "Below Average",
+      6: "Vacant",
+      7: "Sealed / Compromised",
+    };
+    return map[n] ?? null;
+  }
+  return s;
+}
+
 export async function POST() {
   try {
     const supabase = await createClient();
@@ -94,14 +114,12 @@ export async function POST() {
           const bedrooms = keepNum(details.bedrooms);
           const bathrooms = keepNum(details.bathrooms);
           const stories = keepNum(details.stories);
-          const exteriorCondition = keepStr(details.exterior_condition);
-          const interiorCondition = keepStr(details.interior_condition);
           if (unitCount != null) payload.unit_count = String(unitCount);
           if (bedrooms != null) payload.bedrooms = bedrooms;
           if (bathrooms != null) payload.bathrooms = bathrooms;
           if (stories != null) payload.stories = stories;
-          if (exteriorCondition != null) payload.exterior_condition = exteriorCondition;
-          if (interiorCondition != null) payload.interior_condition = interiorCondition;
+          payload.exterior_condition = mapConditionCode(details.exterior_condition) ?? null;
+          payload.interior_condition = mapConditionCode(details.interior_condition) ?? null;
         }
 
         const keys = Object.keys(payload);

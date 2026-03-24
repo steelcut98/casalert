@@ -74,19 +74,20 @@ function escapeSql(s: string): string {
   return s.replace(/'/g, "''");
 }
 
+const STREET_SUFFIXES = /\b(ST|AVE|BLVD|DR|RD|CT|PL|LN|WAY|TER|CIR)\.?$/i;
+
 function stripStreetSuffix(address: string): string {
-  return address
-    .replace(/\s+\b(ST|AVE|BLVD|DR|RD|CT|PL|LN|WAY)\b\.?$/i, "")
-    .trim();
+  return address.replace(STREET_SUFFIXES, "").trim();
 }
 
-function parseStreetNameCore(address: string): { streetNum: string; streetName: string } {
+function parsePhillyAddress(address: string): { streetNum: string; direction: string; streetName: string } {
   const parts = normalizeAddressForQuery(address).split(/\s+/).filter(Boolean);
   const streetNum = parts[0] ?? "";
-  const maybeDir = parts[1] ?? "";
-  const start = DIRECTION.test(maybeDir) ? 2 : 1;
-  const noSuffix = stripStreetSuffix(parts.slice(start).join(" "));
-  return { streetNum, streetName: noSuffix };
+  const direction = parts.length >= 2 && DIRECTION.test(parts[1]) ? parts[1] : "";
+  const nameStart = direction ? 2 : 1;
+  const streetNameWithSuffix = parts.slice(nameStart).join(" ");
+  const streetName = stripStreetSuffix(streetNameWithSuffix);
+  return { streetNum, direction, streetName };
 }
 
 function mapConditionCode(code: unknown): string | null {
@@ -115,48 +116,43 @@ function mapConditionCode(code: unknown): string | null {
 export async function getPhiladelphiaPropertyDetails(address: string): Promise<PropertyEnrichment | null> {
   const normalized = normalizeAddressForQuery(address);
   if (!normalized) return null;
-  const escaped = escapeSql(normalized);
 
-  try {
-    const exactSql = `SELECT year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_date, sale_price FROM opa_properties_public WHERE location = upper('${escaped}') LIMIT 1`;
-    let url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(exactSql)}`;
-    let res = await fetchWithTimeout(url, {
+  const SELECT_COLS = "year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_date, sale_price";
+
+  async function queryOPA(sql: string): Promise<Record<string, unknown>[]> {
+    const url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(sql)}`;
+    const res = await fetchWithTimeout(url, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    if (!res.ok) return null;
-    let data = (await res.json()) as { rows?: Record<string, unknown>[] };
-    let rows = data.rows ?? [];
+    if (!res.ok) return [];
+    const data = (await res.json()) as { rows?: Record<string, unknown>[] };
+    return data.rows ?? [];
+  }
+
+  try {
+    let rows = await queryOPA(
+      `SELECT ${SELECT_COLS} FROM opa_properties_public WHERE location = '${escapeSql(normalized)}' LIMIT 1`
+    );
 
     if (rows.length === 0) {
-      const stripped = stripStreetSuffix(normalized);
-      if (stripped && stripped !== normalized) {
-        const strippedSql = `SELECT year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_date, sale_price FROM opa_properties_public WHERE location = upper('${escapeSql(stripped)}') LIMIT 1`;
-        url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(strippedSql)}`;
-        res = await fetchWithTimeout(url, {
-          headers: { Accept: "application/json" },
-          cache: "no-store",
-        });
-        if (res.ok) {
-          data = (await res.json()) as { rows?: Record<string, unknown>[] };
-          rows = data.rows ?? [];
-        }
+      const noSuffix = stripStreetSuffix(normalized);
+      if (noSuffix && noSuffix !== normalized) {
+        rows = await queryOPA(
+          `SELECT ${SELECT_COLS} FROM opa_properties_public WHERE location LIKE '${escapeSql(noSuffix)}%' LIMIT 1`
+        );
       }
     }
 
     if (rows.length === 0) {
-      const { streetNum, streetName } = parseStreetNameCore(normalized);
+      const { streetNum, direction, streetName } = parsePhillyAddress(normalized);
       if (streetNum && streetName) {
-        const likeSql = `SELECT year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_date, sale_price FROM opa_properties_public WHERE location LIKE upper('%${escapeSql(streetNum)}%${escapeSql(streetName)}%') LIMIT 1`;
-        url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(likeSql)}`;
-        res = await fetchWithTimeout(url, {
-          headers: { Accept: "application/json" },
-          cache: "no-store",
-        });
-        if (res.ok) {
-          data = (await res.json()) as { rows?: Record<string, unknown>[] };
-          rows = data.rows ?? [];
-        }
+        const prefix = direction
+          ? `${escapeSql(streetNum)} ${escapeSql(direction)} ${escapeSql(streetName)}`
+          : `${escapeSql(streetNum)} ${escapeSql(streetName)}`;
+        rows = await queryOPA(
+          `SELECT ${SELECT_COLS} FROM opa_properties_public WHERE location LIKE '${prefix}%' LIMIT 1`
+        );
       }
     }
 
