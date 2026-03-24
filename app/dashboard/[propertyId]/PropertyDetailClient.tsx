@@ -801,10 +801,6 @@ export function PropertyDetailClient({
                     </p>
                   )}
                 </>
-              ) : citySlug === "chicago" ? (
-                <p className="text-zinc-300">
-                  Property details for Chicago are coming soon.
-                </p>
               ) : (
                 <p className="text-zinc-300">
                   Property details are not available for this address.

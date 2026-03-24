@@ -71,9 +71,77 @@ function parseChicagoAddress(address: string): { streetNum: string; direction: s
 }
 
 export async function getChicagoPropertyDetails(address: string): Promise<PropertyEnrichment | null> {
-  void address;
-  // Cook County Assessor API not currently accessible. Chicago enrichment disabled until a reliable data source is found.
-  return null;
+  const token = process.env.COOK_COUNTY_APP_TOKEN || "";
+  if (!token) return null;
+
+  const parsed = parseChicagoAddress(address);
+  if (!parsed || !parsed.streetNum || !parsed.streetName) return null;
+
+  const streetNum = encodeURIComponent(parsed.streetNum);
+  const streetName = encodeURIComponent(parsed.streetName);
+  const url = `https://datacatalog.cookcountyil.gov/resource/bcnq-qi2z.json?%24where=upper(addr)%20like%20upper('%25${streetNum}%25${streetName}%25')&%24limit=1&%24%24app_token=${token}`;
+
+  try {
+    const res = await fetchWithTimeout(url, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>[];
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const row = data[0] as Record<string, unknown>;
+
+    const taxYear = safeNumber(row.tax_year);
+    const age = safeNumber(row.age);
+    const yearBuilt = taxYear != null && age != null ? taxYear - age : null;
+
+    const modelingGroup = safeString(row.modeling_group);
+    const propertyTypeMap: Record<string, string> = { SF: "Single Family", MF: "Multi-Family", CONDO: "Condo" };
+    const propertyType = modelingGroup ? (propertyTypeMap[modelingGroup.toUpperCase()] ?? modelingGroup) : null;
+
+    const fbath = safeNumber(row.fbath);
+    const hbath = safeNumber(row.hbath);
+    const bathrooms = fbath != null || hbath != null ? (fbath ?? 0) + (hbath ?? 0) * 0.5 : null;
+
+    const repairMap: Record<string, string> = {
+      "1": "New / Rehabbed",
+      "2": "Above Average",
+      "3": "Average",
+      "4": "Below Average",
+      "5": "Poor",
+    };
+    const repairCode = row.repair_cnd != null ? String(row.repair_cnd).trim() : null;
+    const exteriorCondition = repairCode ? (repairMap[repairCode] ?? null) : null;
+
+    const qualityMap: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E" };
+    const qualityCode = row.cnst_qlty != null ? String(row.cnst_qlty).trim() : null;
+    const qualityGrade = qualityCode ? (qualityMap[qualityCode] ?? null) : null;
+
+    const airVal = safeNumber(row.air);
+    const centralAir = airVal === 1 ? true : airVal === 0 ? false : null;
+
+    return {
+      year_built: yearBuilt,
+      property_type: propertyType,
+      square_footage: safeNumber(row.bldg_sf),
+      bedrooms: safeNumber(row.beds),
+      bathrooms,
+      stories: null,
+      exterior_condition: exteriorCondition,
+      interior_condition: null,
+      units: safeNumber(row.total_units) ?? safeNumber(row.apts),
+      garage_spaces: safeNumber(row.garage_indicator),
+      quality_grade: qualityGrade,
+      central_air: centralAir,
+      zoning: null,
+      building_description: null,
+      market_value: null,
+      sale_price: null,
+      sale_date: null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 const PHILLY_CARTO_URL = "https://phl.carto.com/api/v2/sql";
