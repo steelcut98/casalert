@@ -7,16 +7,14 @@ const FETCH_TIMEOUT_MS = 5000;
 
 export type PropertyEnrichment = {
   year_built: number | null;
-  units: number | null;
-  square_footage: number | null;
-  assessed_value: number | null;
   property_type: string | null;
-  lot_size: number | null;
+  square_footage: number | null;
   bedrooms?: number | null;
   bathrooms?: number | null;
   stories?: number | null;
   exterior_condition?: string | null;
   interior_condition?: string | null;
+  units: number | null;
 };
 
 function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
@@ -64,56 +62,51 @@ function parseChicagoAddress(address: string): { streetNum: string; direction: s
   return { streetNum, direction, streetName };
 }
 
-/**
- * Get property details from Chicago Building Permits dataset only.
- * Uses street_number, street_direction, street_name with $order=issue_date DESC.
- */
 export async function getChicagoPropertyDetails(address: string): Promise<PropertyEnrichment | null> {
-  const parsed = parseChicagoAddress(address);
-  if (!parsed || !parsed.streetNum || !parsed.streetName) return null;
-
-  const esc = (s: string) => String(s).replace(/'/g, "''");
-  const streetNum = esc(parsed.streetNum);
-  const direction = esc(parsed.direction);
-  const streetName = esc(parsed.streetName);
-
-  let where = `street_number='${streetNum}' AND upper(street_name) like upper('${streetName}%')`;
-  if (parsed.direction) {
-    where = `street_number='${streetNum}' AND upper(street_direction)='${direction}' AND upper(street_name) like upper('${streetName}%')`;
-  }
-
-  try {
-    const params = new URLSearchParams({
-      $where: where,
-      $limit: "1",
-      $order: "issue_date DESC",
-    });
-    const url = `${CHICAGO_PERMITS_URL}?${params.toString()}`;
-    const res = await fetchWithTimeout(url, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as Record<string, unknown>[];
-    if (!Array.isArray(data) || data.length === 0) return null;
-    const row = data[0] as Record<string, unknown>;
-    return {
-      year_built: safeNumber(row.year_built ?? row.yearbuilt),
-      units: null,
-      square_footage: safeNumber(row.total_livable_area ?? row.total_building_area),
-      assessed_value: null,
-      property_type: safeString(row.building_code_description_new ?? row.work_description),
-      lot_size: null,
-    };
-  } catch {
-    return null;
-  }
+  void address;
+  // Cook County Assessor API not currently accessible. Chicago enrichment disabled until a reliable data source is found.
+  return null;
 }
 
 const PHILLY_CARTO_URL = "https://phl.carto.com/api/v2/sql";
 
 function escapeSql(s: string): string {
   return s.replace(/'/g, "''");
+}
+
+function stripStreetSuffix(address: string): string {
+  return address
+    .replace(/\s+\b(ST|AVE|BLVD|DR|RD|CT|PL|LN|WAY)\b\.?$/i, "")
+    .trim();
+}
+
+function parseStreetNameCore(address: string): { streetNum: string; streetName: string } {
+  const parts = normalizeAddressForQuery(address).split(/\s+/).filter(Boolean);
+  const streetNum = parts[0] ?? "";
+  const maybeDir = parts[1] ?? "";
+  const start = DIRECTION.test(maybeDir) ? 2 : 1;
+  const noSuffix = stripStreetSuffix(parts.slice(start).join(" "));
+  return { streetNum, streetName: noSuffix };
+}
+
+function mapConditionCode(code: unknown): string | null {
+  if (code == null) return null;
+  const s = String(code).trim();
+  if (s.length === 0) return null;
+  const n = Number(s);
+  if (Number.isFinite(n)) {
+    if (n === 0 || n === 1) return null;
+    const map: Record<number, string> = {
+      2: "New / Rehabbed",
+      3: "Above Average",
+      4: "Average",
+      5: "Below Average",
+      6: "Vacant",
+      7: "Sealed / Compromised",
+    };
+    return map[n] ?? null;
+  }
+  return s;
 }
 
 /**
@@ -136,9 +129,23 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
     let rows = data.rows ?? [];
 
     if (rows.length === 0) {
-      const parts = normalized.split(/\s+/).filter(Boolean);
-      const streetNum = parts[0] ?? "";
-      const streetName = parts.length > 1 ? parts.slice(1).join(" ") : "";
+      const stripped = stripStreetSuffix(normalized);
+      if (stripped && stripped !== normalized) {
+        const strippedSql = `SELECT year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_date, sale_price FROM opa_properties_public WHERE location = upper('${escapeSql(stripped)}') LIMIT 1`;
+        url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(strippedSql)}`;
+        res = await fetchWithTimeout(url, {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
+        if (res.ok) {
+          data = (await res.json()) as { rows?: Record<string, unknown>[] };
+          rows = data.rows ?? [];
+        }
+      }
+    }
+
+    if (rows.length === 0) {
+      const { streetNum, streetName } = parseStreetNameCore(normalized);
       if (streetNum && streetName) {
         const likeSql = `SELECT year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_date, sale_price FROM opa_properties_public WHERE location LIKE upper('%${escapeSql(streetNum)}%${escapeSql(streetName)}%') LIMIT 1`;
         url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(likeSql)}`;
@@ -165,16 +172,14 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
 
     return {
       year_built: safeNumber(row.year_built),
-      units,
-      square_footage: safeNumber(row.total_livable_area),
-      assessed_value: safeNumber(row.market_value),
       property_type: categoryDesc,
-      lot_size: null,
+      square_footage: safeNumber(row.total_livable_area),
       bedrooms: safeNumber(row.number_of_bedrooms),
       bathrooms: safeNumber(row.number_of_bathrooms),
       stories: safeNumber(row.number_stories),
-      exterior_condition: safeString(row.exterior_condition),
-      interior_condition: safeString(row.interior_condition),
+      exterior_condition: mapConditionCode(row.exterior_condition),
+      interior_condition: mapConditionCode(row.interior_condition),
+      units,
     };
   } catch {
     return null;

@@ -252,8 +252,7 @@ export function OnboardingForm({
               const hasType = d.property_type != null && d.property_type !== "";
               const hasUnits = d.units != null && d.units !== 0;
               const hasSqft = d.square_footage != null && d.square_footage !== 0;
-              const hasValue = d.assessed_value != null && d.assessed_value !== 0;
-              const hasAny = hasYear || hasType || hasUnits || hasSqft || hasValue;
+              const hasAny = hasYear || hasType || hasUnits || hasSqft;
               if (!hasAny) return null;
               return (
                 <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
@@ -284,14 +283,6 @@ export function OnboardingForm({
                         <span className="text-zinc-500">Living area:</span>{" "}
                         <span className="text-zinc-100">
                           {d.square_footage!.toLocaleString()} sq ft
-                        </span>
-                      </span>
-                    )}
-                    {hasValue && (
-                      <span>
-                        <span className="text-zinc-500">Assessed value:</span>{" "}
-                        <span className="text-zinc-100">
-                          ${d.assessed_value!.toLocaleString()}
                         </span>
                       </span>
                     )}

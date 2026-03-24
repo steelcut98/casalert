@@ -80,6 +80,7 @@ type PropertyDetailsDisplay = {
   bathrooms?: number | null;
   stories?: number | null;
   exterior_condition?: string | null;
+  interior_condition?: string | null;
 };
 
 export function PropertyDetailClient({
@@ -568,7 +569,8 @@ export function PropertyDetailClient({
       (propertyDetails.bedrooms != null && propertyDetails.bedrooms !== 0) ||
       (propertyDetails.bathrooms != null && propertyDetails.bathrooms !== 0) ||
       (propertyDetails.stories != null && propertyDetails.stories !== 0) ||
-      (propertyDetails.exterior_condition != null && propertyDetails.exterior_condition !== ""));
+      (propertyDetails.exterior_condition != null && propertyDetails.exterior_condition !== "") ||
+      (propertyDetails.interior_condition != null && propertyDetails.interior_condition !== ""));
 
   /** Philadelphia exterior_condition: 1=best, 7=worst. */
   const exteriorConditionLabel = (v: string | null | undefined): string | null => {
@@ -585,6 +587,17 @@ export function PropertyDetailClient({
       7: "N/A",
     };
     return map[n] ?? v;
+  };
+  const conditionTextClass = (label: string | null): string => {
+    if (!label) return "text-zinc-100";
+    const upper = label.toUpperCase();
+    if (upper === "NEW / REHABBED" || upper === "ABOVE AVERAGE") return "text-emerald-400";
+    if (upper === "AVERAGE") return "text-zinc-300";
+    if (upper === "BELOW AVERAGE") return "text-amber-400";
+    if (upper === "VACANT" || upper === "SEALED / COMPROMISED" || upper === "CRITICAL") {
+      return "text-red-400";
+    }
+    return "text-zinc-100";
   };
 
   return (
@@ -685,15 +698,27 @@ export function PropertyDetailClient({
                   {exteriorConditionLabel(propertyDetails!.exterior_condition) != null && (
                     <p>
                       <span className="text-zinc-500">Exterior condition:</span>{" "}
-                      <span className="text-zinc-100">
+                      <span className={conditionTextClass(exteriorConditionLabel(propertyDetails!.exterior_condition))}>
                         {exteriorConditionLabel(propertyDetails!.exterior_condition)}
                       </span>
                     </p>
                   )}
                 </>
+              ) : citySlug === "chicago" ? (
+                <p className="text-zinc-300">
+                  Property details for Chicago are coming soon. We&apos;re working on integrating Cook County property records.
+                </p>
               ) : (
                 <p className="text-zinc-300">
                   Property details are not yet available for this address. We&apos;re working on expanding our data coverage.
+                </p>
+              )}
+              {exteriorConditionLabel(propertyDetails?.interior_condition) != null && (
+                <p>
+                  <span className="text-zinc-500">Interior condition:</span>{" "}
+                  <span className={conditionTextClass(exteriorConditionLabel(propertyDetails?.interior_condition))}>
+                    {exteriorConditionLabel(propertyDetails?.interior_condition)}
+                  </span>
                 </p>
               )}
             </div>

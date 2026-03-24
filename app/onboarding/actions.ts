@@ -17,15 +17,14 @@ const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
 export type PropertyDetailsEnrichment = {
   year_built: number | null;
-  units: number | null;
-  square_footage: number | null;
-  assessed_value: number | null;
   property_type: string | null;
-  lot_size: number | null;
+  square_footage: number | null;
+  units: number | null;
   bedrooms?: number | null;
   bathrooms?: number | null;
   stories?: number | null;
   exterior_condition?: string | null;
+  interior_condition?: string | null;
 };
 
 export type OnboardingResult =
@@ -253,7 +252,6 @@ export async function addPropertyWithBaselineScan(
           unit_count: enrichment.units != null ? String(enrichment.units) : null,
           year_built: enrichment.year_built != null ? String(enrichment.year_built) : null,
           square_footage: enrichment.square_footage ?? null,
-          assessed_value: enrichment.assessed_value ?? null,
           bedrooms: enrichment.bedrooms ?? null,
           bathrooms: enrichment.bathrooms ?? null,
           stories: enrichment.stories ?? null,

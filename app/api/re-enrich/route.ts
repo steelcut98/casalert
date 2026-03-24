@@ -58,6 +58,18 @@ export async function POST() {
           failed++;
           continue;
         }
+        if (citySlug === "chicago") {
+          const { error: deleteErr } = await admin
+            .from("property_details")
+            .delete()
+            .eq("property_id", property.id);
+          if (deleteErr) {
+            failed++;
+          } else {
+            enriched++;
+          }
+          continue;
+        }
         const details = await getPropertyDetails(property.address, citySlug);
         if (!details) {
           failed++;
