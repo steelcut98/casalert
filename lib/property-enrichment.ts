@@ -15,6 +15,14 @@ export type PropertyEnrichment = {
   exterior_condition?: string | null;
   interior_condition?: string | null;
   units: number | null;
+  market_value?: number | null;
+  sale_price?: number | null;
+  sale_date?: string | null;
+  building_description?: string | null;
+  central_air?: boolean | null;
+  garage_spaces?: number | null;
+  quality_grade?: string | null;
+  zoning?: string | null;
 };
 
 function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
@@ -119,7 +127,7 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
   const raw = address.toUpperCase().trim();
   if (!raw) return null;
 
-  const SELECT_COLS = "year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition";
+  const SELECT_COLS = "year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_price, sale_date, building_code_description, central_air, garage_spaces, quality_grade, zoning";
 
   async function queryOPA(sql: string): Promise<Record<string, unknown>[]> {
     const url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(sql)}`;
@@ -178,6 +186,14 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
       exterior_condition: mapConditionCode(row.exterior_condition),
       interior_condition: mapConditionCode(row.interior_condition),
       units,
+      market_value: safeNumber(row.market_value),
+      sale_price: safeNumber(row.sale_price),
+      sale_date: safeString(row.sale_date),
+      building_description: safeString(row.building_code_description),
+      central_air: row.central_air === "Y" ? true : row.central_air === "N" ? false : null,
+      garage_spaces: safeNumber(row.garage_spaces),
+      quality_grade: safeString(row.quality_grade),
+      zoning: safeString(row.zoning),
     };
   } catch {
     return null;

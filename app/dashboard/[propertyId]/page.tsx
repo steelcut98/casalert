@@ -46,7 +46,7 @@ export default async function PropertyDetailPage({
 
   const { data: propertyDetailsRow } = await supabase
     .from("property_details")
-    .select("year_built, property_type, unit_count, square_footage, assessed_value, bedrooms, bathrooms, stories, exterior_condition")
+    .select("year_built, property_type, unit_count, square_footage, assessed_value, bedrooms, bathrooms, stories, exterior_condition, interior_condition, market_value, sale_price, sale_date, building_description, central_air, garage_spaces, quality_grade, zoning")
     .eq("property_id", propertyId)
     .maybeSingle();
   const toNum = (v: unknown) => {
@@ -61,6 +61,11 @@ export default async function PropertyDetailPage({
     const n = toNum(v);
     return n != null && n !== 0 ? n : null;
   };
+  const cleanBool = (v: unknown): boolean | null => {
+    if (v === true || v === "true") return true;
+    if (v === false || v === "false") return false;
+    return null;
+  };
   const raw = propertyDetailsRow
     ? {
         year_built: cleanNum(propertyDetailsRow.year_built),
@@ -73,6 +78,15 @@ export default async function PropertyDetailPage({
         bathrooms: cleanNum(propertyDetailsRow.bathrooms),
         stories: cleanNum(propertyDetailsRow.stories),
         exterior_condition: cleanStr(propertyDetailsRow.exterior_condition),
+        interior_condition: cleanStr(propertyDetailsRow.interior_condition),
+        market_value: cleanNum(propertyDetailsRow.market_value),
+        sale_price: cleanNum(propertyDetailsRow.sale_price),
+        sale_date: cleanStr(propertyDetailsRow.sale_date),
+        building_description: cleanStr(propertyDetailsRow.building_description),
+        central_air: cleanBool(propertyDetailsRow.central_air),
+        garage_spaces: cleanNum(propertyDetailsRow.garage_spaces),
+        quality_grade: cleanStr(propertyDetailsRow.quality_grade),
+        zoning: cleanStr(propertyDetailsRow.zoning),
       }
     : null;
   const hasAny =
@@ -85,7 +99,12 @@ export default async function PropertyDetailPage({
       raw.bedrooms != null ||
       raw.bathrooms != null ||
       raw.stories != null ||
-      raw.exterior_condition != null);
+      raw.exterior_condition != null ||
+      raw.interior_condition != null ||
+      raw.market_value != null ||
+      raw.building_description != null ||
+      raw.quality_grade != null ||
+      raw.zoning != null);
   const propertyDetails = hasAny ? raw : null;
 
   const { data: violations, error: violationsError } = await supabase

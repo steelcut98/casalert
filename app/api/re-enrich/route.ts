@@ -122,6 +122,14 @@ export async function POST() {
           if (stories != null) payload.stories = stories;
           payload.exterior_condition = mapConditionCode(details.exterior_condition) ?? null;
           payload.interior_condition = mapConditionCode(details.interior_condition) ?? null;
+          payload.market_value = details.market_value ?? null;
+          payload.sale_price = details.sale_price ?? null;
+          payload.sale_date = details.sale_date ?? null;
+          payload.building_description = details.building_description ?? null;
+          payload.central_air = details.central_air ?? null;
+          payload.garage_spaces = details.garage_spaces ?? null;
+          payload.quality_grade = details.quality_grade ?? null;
+          payload.zoning = details.zoning ?? null;
         }
 
         const keys = Object.keys(payload);

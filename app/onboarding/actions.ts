@@ -25,6 +25,14 @@ export type PropertyDetailsEnrichment = {
   stories?: number | null;
   exterior_condition?: string | null;
   interior_condition?: string | null;
+  market_value?: number | null;
+  sale_price?: number | null;
+  sale_date?: string | null;
+  building_description?: string | null;
+  central_air?: boolean | null;
+  garage_spaces?: number | null;
+  quality_grade?: string | null;
+  zoning?: string | null;
 };
 
 export type OnboardingResult =
@@ -256,6 +264,15 @@ export async function addPropertyWithBaselineScan(
           bathrooms: enrichment.bathrooms ?? null,
           stories: enrichment.stories ?? null,
           exterior_condition: enrichment.exterior_condition ?? null,
+          interior_condition: enrichment.interior_condition ?? null,
+          market_value: enrichment.market_value ?? null,
+          sale_price: enrichment.sale_price ?? null,
+          sale_date: enrichment.sale_date ?? null,
+          building_description: enrichment.building_description ?? null,
+          central_air: enrichment.central_air ?? null,
+          garage_spaces: enrichment.garage_spaces ?? null,
+          quality_grade: enrichment.quality_grade ?? null,
+          zoning: enrichment.zoning ?? null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "property_id" }

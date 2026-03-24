@@ -81,6 +81,14 @@ type PropertyDetailsDisplay = {
   stories?: number | null;
   exterior_condition?: string | null;
   interior_condition?: string | null;
+  market_value?: number | null;
+  sale_price?: number | null;
+  sale_date?: string | null;
+  building_description?: string | null;
+  central_air?: boolean | null;
+  garage_spaces?: number | null;
+  quality_grade?: string | null;
+  zoning?: string | null;
 };
 
 export function PropertyDetailClient({
@@ -122,6 +130,8 @@ export function PropertyDetailClient({
   const [bulkConfirmOverride, setBulkConfirmOverride] = useState(false);
   const [propertyInfoOpen, setPropertyInfoOpen] = useState(false);
   const [refreshingPropertyInfo, setRefreshingPropertyInfo] = useState(false);
+  const [conditionTooltipOpen, setConditionTooltipOpen] = useState(false);
+  const conditionTooltipRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (!infoPopoverAnchor) return;
@@ -133,6 +143,17 @@ export function PropertyDetailClient({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [infoPopoverAnchor]);
+
+  useEffect(() => {
+    if (!conditionTooltipOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (conditionTooltipRef.current && !conditionTooltipRef.current.contains(e.target as Node)) {
+        setConditionTooltipOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [conditionTooltipOpen]);
 
   const isOpen = (v: ViolationRow) =>
     (v.violation_status ?? "").toUpperCase() === "OPEN";
@@ -650,30 +671,21 @@ export function PropertyDetailClient({
                     </p>
                   )}
                   {propertyDetails!.property_type != null && propertyDetails!.property_type !== "" && (
-                    <p>
-                      <span className="text-zinc-500">Property type:</span>{" "}
-                      <span className="text-zinc-100">{propertyDetails!.property_type}</span>
-                    </p>
-                  )}
-                  {propertyDetails!.units != null && propertyDetails!.units !== 0 && (
-                    <p>
-                      <span className="text-zinc-500">Units:</span>{" "}
-                      <span className="text-zinc-100">{propertyDetails!.units}</span>
-                    </p>
+                    <div>
+                      <p>
+                        <span className="text-zinc-500">Property type:</span>{" "}
+                        <span className="text-zinc-100">{propertyDetails!.property_type}</span>
+                      </p>
+                      {propertyDetails!.building_description != null && propertyDetails!.building_description !== "" && (
+                        <p className="ml-4 text-xs text-zinc-500">{propertyDetails!.building_description}</p>
+                      )}
+                    </div>
                   )}
                   {propertyDetails!.square_footage != null && propertyDetails!.square_footage !== 0 && (
                     <p>
                       <span className="text-zinc-500">Living area:</span>{" "}
                       <span className="text-zinc-100">
                         {propertyDetails!.square_footage.toLocaleString()} sq ft
-                      </span>
-                    </p>
-                  )}
-                  {propertyDetails!.lot_size != null && propertyDetails!.lot_size !== 0 && (
-                    <p>
-                      <span className="text-zinc-500">Lot size:</span>{" "}
-                      <span className="text-zinc-100">
-                        {propertyDetails!.lot_size.toLocaleString()} sq ft
                       </span>
                     </p>
                   )}
@@ -695,11 +707,68 @@ export function PropertyDetailClient({
                       <span className="text-zinc-100">{propertyDetails!.stories}</span>
                     </p>
                   )}
-                  {exteriorConditionLabel(propertyDetails!.exterior_condition) != null && (
+                  {propertyDetails!.central_air != null && (
+                    <p>
+                      <span className="text-zinc-500">Central air:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.central_air ? "Yes" : "No"}</span>
+                    </p>
+                  )}
+                  {propertyDetails!.garage_spaces != null && propertyDetails!.garage_spaces !== 0 && (
+                    <p>
+                      <span className="text-zinc-500">Garage spaces:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.garage_spaces}</span>
+                    </p>
+                  )}
+                  {propertyDetails!.exterior_condition != null && propertyDetails!.exterior_condition !== "" && (
                     <p>
                       <span className="text-zinc-500">Exterior condition:</span>{" "}
-                      <span className={conditionTextClass(exteriorConditionLabel(propertyDetails!.exterior_condition))}>
-                        {exteriorConditionLabel(propertyDetails!.exterior_condition)}
+                      <span className={conditionTextClass(propertyDetails!.exterior_condition)}>
+                        {propertyDetails!.exterior_condition}
+                      </span>
+                      <span ref={conditionTooltipRef} className="relative ml-1 inline-block">
+                        <button
+                          type="button"
+                          onClick={() => setConditionTooltipOpen((v) => !v)}
+                          className="text-zinc-600 hover:text-zinc-400"
+                          aria-label="Condition scale info"
+                        >
+                          ℹ️
+                        </button>
+                        {conditionTooltipOpen && (
+                          <span className="absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-xs text-zinc-300 shadow-lg">
+                            Property condition is rated by the Philadelphia Office of Property Assessment on a scale from 2 (New/Rehabbed) to 7 (Sealed/Compromised). Ratings: 2&nbsp;=&nbsp;New/Rehabbed, 3&nbsp;=&nbsp;Above Average, 4&nbsp;=&nbsp;Average, 5&nbsp;=&nbsp;Below Average, 6&nbsp;=&nbsp;Vacant, 7&nbsp;=&nbsp;Sealed/Compromised.
+                          </span>
+                        )}
+                      </span>
+                    </p>
+                  )}
+                  {propertyDetails!.interior_condition != null && propertyDetails!.interior_condition !== "" && (
+                    <p>
+                      <span className="text-zinc-500">Interior condition:</span>{" "}
+                      <span className={conditionTextClass(propertyDetails!.interior_condition)}>
+                        {propertyDetails!.interior_condition}
+                      </span>
+                    </p>
+                  )}
+                  {propertyDetails!.quality_grade != null && propertyDetails!.quality_grade !== "" && (
+                    <p>
+                      <span className="text-zinc-500">Quality grade:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.quality_grade}</span>
+                    </p>
+                  )}
+                  {propertyDetails!.zoning != null && propertyDetails!.zoning !== "" && (
+                    <p>
+                      <span className="text-zinc-500">Zoning:</span>{" "}
+                      <span className="text-zinc-100">{propertyDetails!.zoning}</span>
+                    </p>
+                  )}
+                  {(propertyDetails!.sale_price != null || propertyDetails!.sale_date != null) && (
+                    <p>
+                      <span className="text-zinc-500">Last sale:</span>{" "}
+                      <span className="text-zinc-100">
+                        {propertyDetails!.sale_price != null && `$${propertyDetails!.sale_price.toLocaleString()}`}
+                        {propertyDetails!.sale_price != null && propertyDetails!.sale_date != null && " on "}
+                        {propertyDetails!.sale_date != null && new Date(propertyDetails!.sale_date).toLocaleDateString()}
                       </span>
                     </p>
                   )}
@@ -711,14 +780,6 @@ export function PropertyDetailClient({
               ) : (
                 <p className="text-zinc-300">
                   Property details are not available for this address.
-                </p>
-              )}
-              {exteriorConditionLabel(propertyDetails?.interior_condition) != null && (
-                <p>
-                  <span className="text-zinc-500">Interior condition:</span>{" "}
-                  <span className={conditionTextClass(exteriorConditionLabel(propertyDetails?.interior_condition))}>
-                    {exteriorConditionLabel(propertyDetails?.interior_condition)}
-                  </span>
                 </p>
               )}
             </div>
