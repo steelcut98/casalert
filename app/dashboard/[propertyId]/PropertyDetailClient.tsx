@@ -120,6 +120,7 @@ export function PropertyDetailClient({
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [bulkConfirmOverride, setBulkConfirmOverride] = useState(false);
   const [propertyInfoOpen, setPropertyInfoOpen] = useState(false);
+  const [refreshingPropertyInfo, setRefreshingPropertyInfo] = useState(false);
 
   useEffect(() => {
     if (!infoPopoverAnchor) return;
@@ -696,6 +697,22 @@ export function PropertyDetailClient({
                 </p>
               )}
             </div>
+            <button
+              type="button"
+              disabled={refreshingPropertyInfo}
+              onClick={async () => {
+                try {
+                  setRefreshingPropertyInfo(true);
+                  await fetch("/api/re-enrich", { method: "POST" });
+                  window.location.reload();
+                } finally {
+                  setRefreshingPropertyInfo(false);
+                }
+              }}
+              className="mt-4 text-sm text-zinc-500 hover:underline disabled:opacity-60"
+            >
+              {refreshingPropertyInfo ? "Refreshing..." : "Refresh data"}
+            </button>
             <p className="mt-4 text-xs text-zinc-500">Source: Public property records</p>
           </div>
         </div>

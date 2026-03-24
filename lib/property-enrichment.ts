@@ -16,6 +16,7 @@ export type PropertyEnrichment = {
   bathrooms?: number | null;
   stories?: number | null;
   exterior_condition?: string | null;
+  interior_condition?: string | null;
 };
 
 function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
@@ -173,6 +174,7 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
       bathrooms: safeNumber(row.number_of_bathrooms),
       stories: safeNumber(row.number_stories),
       exterior_condition: safeString(row.exterior_condition),
+      interior_condition: safeString(row.interior_condition),
     };
   } catch {
     return null;
