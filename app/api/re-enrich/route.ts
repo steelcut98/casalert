@@ -24,20 +24,22 @@ function mapConditionCode(code: unknown): string | null {
   if (code == null) return null;
   const s = String(code).trim();
   if (s.length === 0) return null;
-  const n = Number(s);
-  if (Number.isFinite(n)) {
-    if (n === 0 || n === 1) return null;
-    const map: Record<number, string> = {
-      2: "New / Rehabbed",
-      3: "Above Average",
-      4: "Average",
-      5: "Below Average",
-      6: "Vacant",
-      7: "Sealed / Compromised",
-    };
-    return map[n] ?? null;
-  }
-  return s;
+  const numericMap: Record<string, string> = {
+    "2": "New / Rehabbed",
+    "3": "Above Average",
+    "4": "Average",
+    "5": "Below Average",
+    "6": "Vacant",
+    "7": "Sealed / Compromised",
+  };
+  if (numericMap[s]) return numericMap[s];
+  if (s === "0" || s === "1") return null;
+  const validLabels = new Set([
+    "New / Rehabbed", "Above Average", "Average",
+    "Below Average", "Vacant", "Sealed / Compromised",
+  ]);
+  if (validLabels.has(s)) return s;
+  return null;
 }
 
 export async function POST() {

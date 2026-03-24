@@ -114,10 +114,10 @@ function mapConditionCode(code: unknown): string | null {
  * Get property details from Philadelphia OPA properties (opa_properties_public).
  */
 export async function getPhiladelphiaPropertyDetails(address: string): Promise<PropertyEnrichment | null> {
-  const normalized = normalizeAddressForQuery(address);
-  if (!normalized) return null;
+  const raw = address.toUpperCase().trim();
+  if (!raw) return null;
 
-  const SELECT_COLS = "year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_date, sale_price";
+  const SELECT_COLS = "year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition";
 
   async function queryOPA(sql: string): Promise<Record<string, unknown>[]> {
     const url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(sql)}`;
@@ -132,12 +132,12 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
 
   try {
     let rows = await queryOPA(
-      `SELECT ${SELECT_COLS} FROM opa_properties_public WHERE location = '${escapeSql(normalized)}' LIMIT 1`
+      `SELECT ${SELECT_COLS} FROM opa_properties_public WHERE location = '${escapeSql(raw)}' LIMIT 1`
     );
 
     if (rows.length === 0) {
-      const noSuffix = stripStreetSuffix(normalized);
-      if (noSuffix && noSuffix !== normalized) {
+      const noSuffix = stripStreetSuffix(raw);
+      if (noSuffix && noSuffix !== raw) {
         rows = await queryOPA(
           `SELECT ${SELECT_COLS} FROM opa_properties_public WHERE location LIKE '${escapeSql(noSuffix)}%' LIMIT 1`
         );
@@ -145,7 +145,7 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
     }
 
     if (rows.length === 0) {
-      const { streetNum, direction, streetName } = parsePhillyAddress(normalized);
+      const { streetNum, direction, streetName } = parsePhillyAddress(raw);
       if (streetNum && streetName) {
         const prefix = direction
           ? `${escapeSql(streetNum)} ${escapeSql(direction)} ${escapeSql(streetName)}`
