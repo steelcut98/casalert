@@ -132,6 +132,8 @@ export function PropertyDetailClient({
   const [refreshingPropertyInfo, setRefreshingPropertyInfo] = useState(false);
   const [conditionTooltipOpen, setConditionTooltipOpen] = useState(false);
   const conditionTooltipRef = useRef<HTMLSpanElement>(null);
+  const [qualityTooltipOpen, setQualityTooltipOpen] = useState(false);
+  const qualityTooltipRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (!infoPopoverAnchor) return;
@@ -149,6 +151,17 @@ export function PropertyDetailClient({
     function handleClick(e: MouseEvent) {
       if (conditionTooltipRef.current && !conditionTooltipRef.current.contains(e.target as Node)) {
         setConditionTooltipOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [conditionTooltipOpen]);
+
+  useEffect(() => {
+    if (!qualityTooltipOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (qualityTooltipRef.current && !qualityTooltipRef.current.contains(e.target as Node)) {
+        setQualityTooltipOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -748,28 +761,43 @@ export function PropertyDetailClient({
                       <span className={conditionTextClass(propertyDetails!.interior_condition)}>
                         {propertyDetails!.interior_condition}
                       </span>
+                      <span className="relative ml-1 inline-block">
+                        <button
+                          type="button"
+                          onClick={() => setConditionTooltipOpen((v) => !v)}
+                          className="text-zinc-600 hover:text-zinc-400"
+                          aria-label="Condition scale info"
+                        >
+                          ℹ️
+                        </button>
+                      </span>
                     </p>
                   )}
                   {propertyDetails!.quality_grade != null && propertyDetails!.quality_grade !== "" && (
                     <p>
                       <span className="text-zinc-500">Quality grade:</span>{" "}
                       <span className="text-zinc-100">{propertyDetails!.quality_grade}</span>
+                      <span ref={qualityTooltipRef} className="relative ml-1 inline-block">
+                        <button
+                          type="button"
+                          onClick={() => setQualityTooltipOpen((v) => !v)}
+                          className="text-zinc-600 hover:text-zinc-400"
+                          aria-label="Quality grade info"
+                        >
+                          ℹ️
+                        </button>
+                        {qualityTooltipOpen && (
+                          <span className="absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-xs text-zinc-300 shadow-lg">
+                            Quality grade is assigned by the Philadelphia Office of Property Assessment based on construction quality and materials. Scale: A+ (highest) through E (lowest). Grades A–B indicate premium construction. C is standard. D–E indicate below-standard construction.
+                          </span>
+                        )}
+                      </span>
                     </p>
                   )}
                   {propertyDetails!.zoning != null && propertyDetails!.zoning !== "" && (
                     <p>
                       <span className="text-zinc-500">Zoning:</span>{" "}
                       <span className="text-zinc-100">{propertyDetails!.zoning}</span>
-                    </p>
-                  )}
-                  {(propertyDetails!.sale_price != null || propertyDetails!.sale_date != null) && (
-                    <p>
-                      <span className="text-zinc-500">Last sale:</span>{" "}
-                      <span className="text-zinc-100">
-                        {propertyDetails!.sale_price != null && `$${propertyDetails!.sale_price.toLocaleString()}`}
-                        {propertyDetails!.sale_price != null && propertyDetails!.sale_date != null && " on "}
-                        {propertyDetails!.sale_date != null && new Date(propertyDetails!.sale_date).toLocaleDateString()}
-                      </span>
                     </p>
                   )}
                 </>
