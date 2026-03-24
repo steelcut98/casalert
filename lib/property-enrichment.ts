@@ -107,7 +107,9 @@ function mapConditionCode(code: unknown): string | null {
     };
     return map[n] ?? null;
   }
-  return s;
+  const validLabels = ["New / Rehabbed", "Above Average", "Average", "Below Average", "Vacant", "Sealed / Compromised"];
+  if (validLabels.includes(s)) return s;
+  return null;
 }
 
 /**
