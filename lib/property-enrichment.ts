@@ -3,7 +3,7 @@
  * All functions return null on failure — enrichment is optional and must not block the app.
  */
 
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 30000;
 
 export type PropertyEnrichment = {
   year_built: number | null;
@@ -79,8 +79,19 @@ export async function getChicagoPropertyDetails(address: string): Promise<Proper
   if (!parsed || !parsed.streetNum || !parsed.streetName) return null;
 
   const streetNum = encodeURIComponent(parsed.streetNum);
-  const streetName = encodeURIComponent(parsed.streetName);
-  const url = `https://datacatalog.cookcountyil.gov/resource/bcnq-qi2z.json?%24where=upper(addr)%20like%20upper('%25${streetNum}%25${streetName}%25')&%24limit=1&%24%24app_token=${token}`;
+  const suffixRegex = /\b(ST|AVE|BLVD|DR|RD|CT|PL|LN|WAY|TER|CIR)\.?\s*$/i;
+  const cleanStreetName = parsed.streetName.replace(suffixRegex, "").trim();
+  const encodedCleanName = encodeURIComponent(cleanStreetName);
+
+  let likePattern: string;
+  if (parsed.direction) {
+    const encodedDir = encodeURIComponent(parsed.direction);
+    likePattern = `'%25${streetNum}%20${encodedDir}%20${encodedCleanName}%25'`;
+  } else {
+    likePattern = `'%25${streetNum}%25${encodedCleanName}%25'`;
+  }
+
+  const url = `https://datacatalog.cookcountyil.gov/resource/bcnq-qi2z.json?%24where=upper(addr)%20like%20upper(${likePattern})&%24limit=1&%24%24app_token=${token}`;
 
   try {
     const res = await fetchWithTimeout(url, {
