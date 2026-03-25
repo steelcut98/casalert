@@ -107,7 +107,7 @@ export async function POST(request: Request) {
         const yearBuilt = keepNum(details.year_built);
         const propertyType = keepStr(details.property_type);
         const squareFootage = keepNum(details.square_footage);
-        if (yearBuilt != null) payload.year_built = String(yearBuilt);
+        if (yearBuilt != null) payload.year_built = Math.round(yearBuilt);
         if (propertyType != null) payload.property_type = propertyType;
         if (squareFootage != null) payload.square_footage = squareFootage;
 
@@ -115,9 +115,9 @@ export async function POST(request: Request) {
         const bedrooms = keepNum(details.bedrooms);
         const bathrooms = keepNum(details.bathrooms);
         const stories = keepNum(details.stories);
-        if (unitCount != null) payload.unit_count = String(unitCount);
+        if (unitCount != null) payload.unit_count = Math.round(unitCount);
         if (bedrooms != null) payload.bedrooms = bedrooms;
-        if (bathrooms != null) payload.bathrooms = bathrooms;
+        if (bathrooms != null) payload.bathrooms = Math.round(bathrooms);
         if (stories != null) payload.stories = stories;
         payload.exterior_condition = details.exterior_condition ?? null;
         payload.interior_condition = details.interior_condition ?? null;
@@ -140,6 +140,7 @@ export async function POST(request: Request) {
           .from("property_details")
           .upsert(payload, { onConflict: "property_id" });
         if (upsertErr) {
+          console.error("[Re-enrich] Upsert error for", property.address, ":", upsertErr.message, "Payload keys:", Object.keys(payload));
           failed++;
           continue;
         }
