@@ -253,15 +253,15 @@ export async function addPropertyWithBaselineScan(
     const enrichment = await getPropertyDetails(address.trim(), citySlug);
     if (enrichment) {
       const admin = createAdminClient();
-      await admin.from("property_details").upsert(
+      const { error: enrichUpsertErr } = await admin.from("property_details").upsert(
         {
           property_id: newProperty.id,
           property_type: enrichment.property_type ?? null,
-          unit_count: enrichment.units != null ? String(enrichment.units) : null,
-          year_built: enrichment.year_built != null ? String(enrichment.year_built) : null,
+          unit_count: enrichment.units != null ? Math.round(enrichment.units) : null,
+          year_built: enrichment.year_built != null ? Math.round(enrichment.year_built) : null,
           square_footage: enrichment.square_footage ?? null,
           bedrooms: enrichment.bedrooms ?? null,
-          bathrooms: enrichment.bathrooms ?? null,
+          bathrooms: enrichment.bathrooms != null ? Math.round(enrichment.bathrooms) : null,
           stories: enrichment.stories ?? null,
           exterior_condition: enrichment.exterior_condition ?? null,
           interior_condition: enrichment.interior_condition ?? null,
@@ -277,6 +277,9 @@ export async function addPropertyWithBaselineScan(
         },
         { onConflict: "property_id" }
       );
+      if (enrichUpsertErr) {
+        console.error("[onboarding] enrichment upsert error:", enrichUpsertErr.message);
+      }
       propertyDetails = enrichment;
     }
   } catch (e) {
