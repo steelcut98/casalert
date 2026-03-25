@@ -3,7 +3,7 @@
  * All functions return null on failure — enrichment is optional and must not block the app.
  */
 
-const FETCH_TIMEOUT_MS = 5000;
+const FETCH_TIMEOUT_MS = 15000;
 
 export type PropertyEnrichment = {
   year_built: number | null;
@@ -71,6 +71,7 @@ function parseChicagoAddress(address: string): { streetNum: string; direction: s
 }
 
 export async function getChicagoPropertyDetails(address: string): Promise<PropertyEnrichment | null> {
+  console.log("[Chicago Enrich] Starting for address:", address, "token present:", !!process.env.COOK_COUNTY_APP_TOKEN);
   const token = process.env.COOK_COUNTY_APP_TOKEN || "";
   if (!token) return null;
 
@@ -86,8 +87,10 @@ export async function getChicagoPropertyDetails(address: string): Promise<Proper
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
+    console.log("[Chicago Enrich] API response status:", res.status);
     if (!res.ok) return null;
     const data = (await res.json()) as Record<string, unknown>[];
+    console.log("[Chicago Enrich] Results count:", data.length);
     if (!Array.isArray(data) || data.length === 0) return null;
     const row = data[0] as Record<string, unknown>;
 
@@ -139,7 +142,8 @@ export async function getChicagoPropertyDetails(address: string): Promise<Proper
       sale_price: null,
       sale_date: null,
     };
-  } catch {
+  } catch (error) {
+    console.error("[Chicago Enrich] Error:", error);
     return null;
   }
 }

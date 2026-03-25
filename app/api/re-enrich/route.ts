@@ -69,6 +69,8 @@ export async function POST() {
       return NextResponse.json({ error: cityErr.message }, { status: 500 });
     }
     const cityById = new Map((cities ?? []).map((c) => [c.id, c.slug]));
+    console.log("[Re-enrich] Properties found:", properties?.length);
+    console.log("[Re-enrich] City map:", Object.fromEntries(cityById));
 
     let enriched = 0;
     let failed = 0;
@@ -80,7 +82,9 @@ export async function POST() {
           failed++;
           continue;
         }
+        console.log("[Re-enrich] Processing:", property.address, "city slug:", citySlug);
         const details = await getPropertyDetails(property.address, citySlug);
+        console.log("[Re-enrich] Details result:", details ? "got data" : "null");
         if (!details) {
           failed++;
           continue;
@@ -132,7 +136,8 @@ export async function POST() {
           continue;
         }
         enriched++;
-      } catch {
+      } catch (error) {
+        console.error("[Re-enrich] Error for property:", property.address, error);
         failed++;
       }
     }
