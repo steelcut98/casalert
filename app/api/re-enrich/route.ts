@@ -42,8 +42,12 @@ function mapConditionCode(code: unknown): string | null {
   return null;
 }
 
-export async function POST() {
+export const maxDuration = 30;
+
+export async function POST(request: Request) {
   try {
+    const { propertyId } = (await request.json().catch(() => ({}))) as { propertyId?: string };
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -53,10 +57,14 @@ export async function POST() {
     }
 
     const admin = createAdminClient();
-    const { data: properties, error: propErr } = await admin
+    let query = admin
       .from("properties")
       .select("id, address, city_id")
       .eq("user_id", user.id);
+    if (propertyId) {
+      query = query.eq("id", propertyId);
+    }
+    const { data: properties, error: propErr } = await query;
     if (propErr) {
       return NextResponse.json({ error: propErr.message }, { status: 500 });
     }

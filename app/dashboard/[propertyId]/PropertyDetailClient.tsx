@@ -813,7 +813,11 @@ export function PropertyDetailClient({
               onClick={async () => {
                 try {
                   setRefreshingPropertyInfo(true);
-                  await fetch("/api/re-enrich", { method: "POST" });
+                  await fetch("/api/re-enrich", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ propertyId }),
+                  });
                   window.location.reload();
                 } finally {
                   setRefreshingPropertyInfo(false);
