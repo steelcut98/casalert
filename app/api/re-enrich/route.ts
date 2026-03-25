@@ -80,18 +80,6 @@ export async function POST() {
           failed++;
           continue;
         }
-        if (citySlug === "chicago") {
-          const { error: deleteErr } = await admin
-            .from("property_details")
-            .delete()
-            .eq("property_id", property.id);
-          if (deleteErr) {
-            failed++;
-          } else {
-            enriched++;
-          }
-          continue;
-        }
         const details = await getPropertyDetails(property.address, citySlug);
         if (!details) {
           failed++;
@@ -111,26 +99,24 @@ export async function POST() {
         if (propertyType != null) payload.property_type = propertyType;
         if (squareFootage != null) payload.square_footage = squareFootage;
 
-        if (citySlug === "philadelphia") {
-          const unitCount = keepNum(details.units);
-          const bedrooms = keepNum(details.bedrooms);
-          const bathrooms = keepNum(details.bathrooms);
-          const stories = keepNum(details.stories);
-          if (unitCount != null) payload.unit_count = String(unitCount);
-          if (bedrooms != null) payload.bedrooms = bedrooms;
-          if (bathrooms != null) payload.bathrooms = bathrooms;
-          if (stories != null) payload.stories = stories;
-          payload.exterior_condition = mapConditionCode(details.exterior_condition) ?? null;
-          payload.interior_condition = mapConditionCode(details.interior_condition) ?? null;
-          payload.market_value = details.market_value ?? null;
-          payload.sale_price = details.sale_price ?? null;
-          payload.sale_date = details.sale_date ?? null;
-          payload.building_description = details.building_description ?? null;
-          payload.central_air = details.central_air ?? null;
-          payload.garage_spaces = details.garage_spaces ?? null;
-          payload.quality_grade = details.quality_grade ?? null;
-          payload.zoning = details.zoning ?? null;
-        }
+        const unitCount = keepNum(details.units);
+        const bedrooms = keepNum(details.bedrooms);
+        const bathrooms = keepNum(details.bathrooms);
+        const stories = keepNum(details.stories);
+        if (unitCount != null) payload.unit_count = String(unitCount);
+        if (bedrooms != null) payload.bedrooms = bedrooms;
+        if (bathrooms != null) payload.bathrooms = bathrooms;
+        if (stories != null) payload.stories = stories;
+        payload.exterior_condition = details.exterior_condition ?? null;
+        payload.interior_condition = details.interior_condition ?? null;
+        payload.market_value = details.market_value ?? null;
+        payload.sale_price = details.sale_price ?? null;
+        payload.sale_date = details.sale_date ?? null;
+        payload.building_description = details.building_description ?? null;
+        payload.central_air = details.central_air ?? null;
+        payload.garage_spaces = details.garage_spaces ?? null;
+        payload.quality_grade = details.quality_grade ?? null;
+        payload.zoning = details.zoning ?? null;
 
         const keys = Object.keys(payload);
         if (keys.length <= 2) {
