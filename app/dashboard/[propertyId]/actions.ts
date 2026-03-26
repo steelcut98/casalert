@@ -271,6 +271,128 @@ export async function rescanPropertyViolations(
   return { count: rows.length };
 }
 
+export async function submitResolution(data: {
+  violationId: string;
+  propertyId: string;
+  resolutionMethod: string;
+  fixDate: string | null;
+  emergencyFix: boolean | null;
+  isRecurring: string;
+  costRange: string;
+  multipleQuotes: boolean;
+  quotesCount: number | null;
+  contractorName: string | null;
+  contractorTrade: string | null;
+  contractorPhone: string | null;
+  contractorWebsite: string | null;
+  wouldUseAgain: string | null;
+  contractorRating: number | null;
+  affectedAreas: string[];
+  additionalIssuesFound: boolean;
+  additionalIssuesDescription: string | null;
+  fixDescription: string | null;
+  casalertsAlertedFirst: string;
+  deadlineMet: string;
+}): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const { error: insertErr } = await supabase
+    .from("violation_resolutions")
+    .insert({
+      violation_id: data.violationId,
+      property_id: data.propertyId,
+      user_id: user.id,
+      resolution_method: data.resolutionMethod,
+      fix_date: data.fixDate ? new Date(data.fixDate).toISOString() : null,
+      emergency_fix: data.emergencyFix,
+      is_recurring: data.isRecurring,
+      cost_range: data.costRange,
+      cost: null,
+      multiple_quotes: data.multipleQuotes,
+      quotes_count: data.quotesCount,
+      contractor_name: data.contractorName,
+      contractor_trade: data.contractorTrade,
+      contractor_phone: data.contractorPhone,
+      contractor_website: data.contractorWebsite,
+      would_use_again: data.wouldUseAgain,
+      contractor_rating: data.contractorRating,
+      contractor_recommended:
+        data.wouldUseAgain === "Yes"
+          ? true
+          : data.wouldUseAgain === "No"
+            ? false
+            : null,
+      affected_areas: data.affectedAreas,
+      additional_issues_found: data.additionalIssuesFound,
+      additional_issues_description: data.additionalIssuesDescription,
+      fix_description: data.fixDescription,
+      casalerts_alerted_first: data.casalertsAlertedFirst,
+      knew_before_casalerts:
+        data.casalertsAlertedFirst === "No, I already knew"
+          ? "Yes"
+          : data.casalertsAlertedFirst === "Yes, CasAlert told me first"
+            ? "No"
+            : "Not sure",
+      deadline_met:
+        data.deadlineMet === "Yes"
+          ? true
+          : data.deadlineMet === "No"
+            ? false
+            : null,
+      duration: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+  if (insertErr) return { error: insertErr.message };
+
+  const verificationDeadline = new Date();
+  verificationDeadline.setDate(verificationDeadline.getDate() + 45);
+
+  const { error: updateErr } = await supabase
+    .from("violations")
+    .update({
+      user_resolution_status: "pending_verification",
+      user_resolved_at: new Date().toISOString(),
+      verification_deadline: verificationDeadline.toISOString(),
+    })
+    .eq("id", data.violationId);
+
+  if (updateErr) return { error: updateErr.message };
+
+  await logComplianceEvent({
+    propertyId: data.propertyId,
+    userId: user.id,
+    eventType: "resolution_form_submitted",
+    eventData: {
+      resolution_method: data.resolutionMethod,
+      resolution_cost_range: data.costRange,
+      violation_code: data.violationId,
+      description: `Resolution submitted: ${data.resolutionMethod}`,
+    },
+  });
+
+  if (data.contractorName) {
+    await logComplianceEvent({
+      propertyId: data.propertyId,
+      userId: user.id,
+      eventType: "contractor_recorded",
+      eventData: {
+        contractor_name: data.contractorName,
+        contractor_trade: data.contractorTrade ?? undefined,
+        description: `Contractor recorded: ${data.contractorName}`,
+      },
+    });
+  }
+
+  revalidatePath(`/dashboard/${data.propertyId}`);
+  return {};
+}
+
 export async function updatePropertyNickname(
   propertyId: string,
   nickname: string | null
