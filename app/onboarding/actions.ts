@@ -12,6 +12,8 @@ import { validateChicagoAddress, fetchChicagoViolationsForProperty } from "@/lib
 import { validatePhiladelphiaAddress, fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 import { canAddProperty, type PlanTier } from "@/lib/plans";
 import { revalidatePath } from "next/cache";
+import { logComplianceEvent, logComplianceEventBatch } from "@/lib/compliance-events";
+import { logAnalyticsEvent } from "@/lib/analytics-events";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -181,6 +183,13 @@ export async function addPropertyWithBaselineScan(
     };
   }
 
+  await logComplianceEvent({
+    propertyId: newProperty.id,
+    userId: user.id,
+    eventType: "property_added",
+    eventData: { description: `Added ${address.trim()} in ${city.name}` },
+  });
+
   const openStatus = "OPEN";
   let openCount = 0;
   let closedCount = 0;
@@ -228,6 +237,34 @@ export async function addPropertyWithBaselineScan(
     if (insertViolError) {
       console.error("[onboarding] Violations insert error", insertViolError);
     }
+  }
+
+  if (violationsToInsert.length > 0) {
+    await logComplianceEventBatch(
+      violationsToInsert.slice(0, 100).map((v) => ({
+        propertyId: newProperty.id,
+        userId: user.id,
+        eventType: "violation_detected" as const,
+        eventData: {
+          violation_code: v.violation_code ?? undefined,
+          violation_description: v.violation_description ?? undefined,
+          inspection_category: v.inspection_category ?? undefined,
+          violation_date: v.violation_date ?? undefined,
+          description: "Found during baseline scan",
+        },
+      }))
+    );
+
+    await logComplianceEvent({
+      propertyId: newProperty.id,
+      userId: user.id,
+      eventType: "baseline_scan_completed",
+      eventData: {
+        violations_found: allRows.length,
+        new_violations: allRows.length,
+        description: `Baseline scan: ${openCount} open, ${closedCount} closed`,
+      },
+    });
   }
 
   await supabase
@@ -280,6 +317,19 @@ export async function addPropertyWithBaselineScan(
       if (enrichUpsertErr) {
         console.error("[onboarding] enrichment upsert error:", enrichUpsertErr.message);
       }
+      if (!enrichUpsertErr) {
+        await logComplianceEvent({
+          propertyId: newProperty.id,
+          userId: user.id,
+          eventType: "property_enriched",
+          eventData: {
+            enrichment_source: citySlug,
+            fields_updated: Object.entries(enrichment)
+              .filter(([, v]) => v != null)
+              .map(([k]) => k),
+          },
+        });
+      }
       propertyDetails = enrichment;
     }
   } catch (e) {
@@ -305,6 +355,17 @@ export async function addPropertyWithBaselineScan(
 
   revalidatePath("/dashboard");
   revalidatePath("/onboarding");
+
+  await logAnalyticsEvent({
+    userId: user.id,
+    eventType: "onboarding_completed",
+    propertyId: newProperty.id,
+    eventData: {
+      city: citySlug,
+      address: address.trim(),
+      violations_found: allRows.length,
+    },
+  });
 
   return {
     success: true,

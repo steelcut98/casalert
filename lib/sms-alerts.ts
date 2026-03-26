@@ -1,4 +1,5 @@
 import twilio from "twilio";
+import { logComplianceEvent } from "@/lib/compliance-events";
 
 // Note: Twilio trial accounts can only send SMS to verified phone numbers.
 
@@ -24,6 +25,17 @@ export async function sendNewViolationSMS(
       to: phoneNumber,
       from,
       body,
+    });
+
+    await logComplianceEvent({
+      propertyId: propertyId,
+      userId: "",
+      eventType: "alert_sent_sms",
+      eventData: {
+        alert_channel: "sms",
+        recipient: phoneNumber.slice(-4),
+        description: "SMS alert sent",
+      },
     });
 
     return { success: true };

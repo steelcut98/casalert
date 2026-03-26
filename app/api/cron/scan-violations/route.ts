@@ -4,6 +4,7 @@ import { fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
 import { fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 import { sendNewViolationEmail, sendReminderEmail } from "@/lib/email-alerts";
 import { sendNewViolationSMS, sendReminderSMS } from "@/lib/sms-alerts";
+import { logComplianceEvent, logComplianceEventBatch } from "@/lib/compliance-events";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
 
   const { data: properties, error: propError } = await supabase
     .from("properties")
-    .select("id, city_id, address, normalized_address, property_group");
+    .select("id, city_id, address, normalized_address, property_group, user_id");
   if (propError) {
     console.error("[cron/scan-violations] properties fetch", propError);
     return NextResponse.json(
@@ -215,6 +216,22 @@ export async function GET(request: Request) {
             fetched: rows.length,
             newCount: toInsert.length,
           });
+
+          if (toInsert.length > 0 && prop.user_id) {
+            await logComplianceEventBatch(
+              toInsert.slice(0, 100).map((v) => ({
+                propertyId: prop.id,
+                userId: prop.user_id,
+                eventType: "violation_detected" as const,
+                eventData: {
+                  violation_code: v.violation_code ?? undefined,
+                  violation_description: v.violation_description ?? undefined,
+                  inspection_category: v.inspection_category ?? undefined,
+                  description: "Detected during scheduled scan",
+                },
+              }))
+            );
+          }
         }
       } else {
         logs.push({
@@ -223,6 +240,20 @@ export async function GET(request: Request) {
           citySlug,
           fetched: rows.length,
           newCount: 0,
+        });
+      }
+
+      if (prop.user_id) {
+        await logComplianceEvent({
+          propertyId: prop.id,
+          userId: prop.user_id,
+          eventType: "property_rescanned",
+          eventData: {
+            violations_found: rows.length,
+            new_violations: toInsert.length,
+            status_changes: 0,
+            description: `Scan complete: ${toInsert.length} new, 0 changes`,
+          },
         });
       }
 

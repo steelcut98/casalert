@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { logComplianceEvent } from "@/lib/compliance-events";
 
 type NewViolation = {
   inspection_category?: string | null;
@@ -139,6 +140,16 @@ export async function sendNewViolationEmail(
       return { success: false, error: error.message };
     }
     console.log("Email sent successfully:", data);
+    await logComplianceEvent({
+      propertyId: propertyId,
+      userId: "",
+      eventType: "alert_sent_email",
+      eventData: {
+        alert_channel: "email",
+        recipient: userEmail,
+        description: "Email alert sent",
+      },
+    });
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -208,6 +219,16 @@ export async function sendReminderEmail(
       return { success: false, error: error.message };
     }
     console.log("Email sent successfully:", data);
+    await logComplianceEvent({
+      propertyId: propertyId,
+      userId: "",
+      eventType: "alert_sent_email",
+      eventData: {
+        alert_channel: "email",
+        recipient: userEmail,
+        description: "Email alert sent",
+      },
+    });
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
