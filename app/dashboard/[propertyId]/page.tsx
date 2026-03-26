@@ -110,7 +110,7 @@ export default async function PropertyDetailPage({
   const { data: violations, error: violationsError } = await supabase
     .from("violations")
     .select(
-      "id, violation_date, violation_code, violation_description, violation_status, violation_status_date, violation_inspector_comments, violation_ordinance, inspector_id, inspection_category, address"
+      "id, violation_date, violation_code, violation_description, violation_status, violation_status_date, violation_inspector_comments, violation_ordinance, inspector_id, inspection_category, address, user_resolution_status"
     )
     .eq("property_id", propertyId)
     .order("violation_date", { ascending: false });
@@ -131,6 +131,7 @@ export default async function PropertyDetailPage({
     inspector_id: v.inspector_id,
     inspection_category: v.inspection_category,
     address: v.address,
+    user_resolution_status: v.user_resolution_status ?? null,
   }));
 
   const violationIds = rows.map((r) => r.id);

@@ -9,6 +9,7 @@ import {
   rescanPropertyViolations,
   type ReminderFrequency,
 } from "./actions";
+import { ResolutionForm } from "./ResolutionForm";
 
 const DATA_PREVIEW_BASE =
   "https://data.cityofchicago.org/Buildings/Building-Violations/22u3-xenr/data_preview";
@@ -51,6 +52,7 @@ type ViolationRow = {
   inspector_id: string | null;
   inspection_category: string | null;
   address: string | null;
+  user_resolution_status?: string | null;
 };
 
 type ReminderInfo = {
@@ -134,6 +136,7 @@ export function PropertyDetailClient({
   const conditionTooltipRef = useRef<HTMLSpanElement>(null);
   const [qualityTooltipOpen, setQualityTooltipOpen] = useState(false);
   const qualityTooltipRef = useRef<HTMLSpanElement>(null);
+  const [resolutionViolation, setResolutionViolation] = useState<ViolationRow | null>(null);
 
   useEffect(() => {
     if (!infoPopoverAnchor) return;
@@ -406,6 +409,25 @@ export function PropertyDetailClient({
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+            {open && (!v.user_resolution_status || v.user_resolution_status === "open") && (
+              <button
+                type="button"
+                onClick={() => setResolutionViolation(v)}
+                className="rounded border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              >
+                Mark as Resolved
+              </button>
+            )}
+            {v.user_resolution_status === "pending_verification" && (
+              <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                ⏳ Pending verification
+              </span>
+            )}
+            {v.user_resolution_status === "verified_resolved" && (
+              <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                ✓ Verified resolved
+              </span>
+            )}
             {open && (
               <>
                 {reminder ? (
@@ -1089,6 +1111,19 @@ export function PropertyDetailClient({
           </div>
         </section>
       </div>
+      {resolutionViolation && (
+        <ResolutionForm
+          violationId={resolutionViolation.id}
+          propertyId={propertyId}
+          violationDescription={resolutionViolation.violation_description ?? null}
+          violationCode={resolutionViolation.violation_code ?? null}
+          onClose={() => setResolutionViolation(null)}
+          onSubmitted={() => {
+            setResolutionViolation(null);
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }
