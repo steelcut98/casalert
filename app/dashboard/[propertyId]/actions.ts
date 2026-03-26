@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
 import { fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
+import { logComplianceEvent, logComplianceEventBatch } from "@/lib/compliance-events";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -233,7 +234,33 @@ export async function rescanPropertyViolations(
     console.log("[rescan] First toInsert violation_inspector_comments:", first.violation_inspector_comments ?? "(null)", "violation_ordinance:", first.violation_ordinance ?? "(null)");
     const { error: insertErr } = await supabase.from("violations").insert(toInsert);
     if (insertErr) return { error: insertErr.message };
+
+    await logComplianceEventBatch(
+      toInsert.slice(0, 100).map((v) => ({
+        propertyId: property.id,
+        userId: user.id,
+        eventType: "violation_detected" as const,
+        eventData: {
+          violation_code: v.violation_code ?? undefined,
+          violation_description: v.violation_description ?? undefined,
+          inspection_category: v.inspection_category ?? undefined,
+          description: "Detected during manual rescan",
+        },
+      }))
+    );
   }
+
+  await logComplianceEvent({
+    propertyId: property.id,
+    userId: user.id,
+    eventType: "property_rescanned",
+    eventData: {
+      violations_found: rows.length,
+      new_violations: toInsert.length,
+      status_changes: 0,
+      description: `Manual rescan: ${rows.length} violations found`,
+    },
+  });
 
   await supabase
     .from("properties")
