@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { rescanPropertyViolations } from "./actions";
+import { sendAnalyticsEvent } from "@/lib/useAnalytics";
 
 export function RescanButton({ propertyId }: { propertyId: string }) {
   const [rescanning, setRescanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
+    sendAnalyticsEvent("rescan_triggered", propertyId);
     setError(null);
     setRescanning(true);
     try {

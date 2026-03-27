@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getTheme, setTheme, type Theme } from "@/lib/theme";
 import { updateProfileField } from "./actions";
+import { useAnalytics } from "@/lib/useAnalytics";
 
 type Props = {
   email: string;
@@ -28,6 +29,7 @@ export function SettingsForm({ email, profile, plan, isPaid }: Props) {
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [phone, setPhone] = useState(profile.phone);
   const [theme, setThemeState] = useState<Theme>("dark");
+  const { trackEvent } = useAnalytics();
 
   useEffect(() => {
     setThemeState(getTheme());
@@ -40,7 +42,10 @@ export function SettingsForm({ email, profile, plan, isPaid }: Props) {
 
   async function handleFieldChange(field: string, value: string | boolean) {
     const result = await updateProfileField(field, value);
-    if (!result.error) showSaved(field);
+    if (!result.error) {
+      showSaved(field);
+      trackEvent("settings_changed", { field });
+    }
   }
 
   function handleThemeChange(next: Theme) {

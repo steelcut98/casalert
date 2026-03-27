@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { submitResolution } from "./actions";
+import { sendAnalyticsEvent } from "@/lib/useAnalytics";
 
 const RESOLUTION_METHODS = [
   "Fixed by me",
@@ -114,6 +115,10 @@ export function ResolutionForm({
   const [casalertsFirst, setCasalertsFirst] = useState("");
   const [deadlineMet, setDeadlineMet] = useState("");
 
+  useEffect(() => {
+    sendAnalyticsEvent("resolution_form_started", propertyId, { violation_id: violationId });
+  }, [propertyId, violationId]);
+
   const needsContractor =
     resolutionMethod === "Hired a contractor" ||
     resolutionMethod === "Hired a handyman";
@@ -203,6 +208,13 @@ export function ResolutionForm({
     if (result.error) {
       setError(result.error);
     } else {
+      sendAnalyticsEvent("resolution_form_completed", propertyId, {
+        violation_id: violationId,
+        resolution_method: buildResolutionMethod(),
+        cost_range: costRange,
+        has_contractor: !!contractorName,
+        steps_completed: step,
+      });
       onSubmitted();
     }
   }
@@ -602,7 +614,10 @@ export function ResolutionForm({
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              sendAnalyticsEvent("resolution_form_abandoned", propertyId, { violation_id: violationId, abandoned_at_step: step });
+              onClose();
+            }}
             className="self-start text-zinc-500 hover:text-zinc-300 transition-colors text-xl leading-none ml-4"
           >
             ✕
@@ -640,7 +655,10 @@ export function ResolutionForm({
           <div className="flex items-center justify-between">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                sendAnalyticsEvent("resolution_form_abandoned", propertyId, { violation_id: violationId, abandoned_at_step: step });
+                onClose();
+              }}
               className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
             >
               Cancel

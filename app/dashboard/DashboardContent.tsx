@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { DashboardPropertyCards } from "./DashboardPropertyCards";
+import { useAnalytics } from "@/lib/useAnalytics";
 
 type Property = {
   id: string;
@@ -28,6 +29,7 @@ export function DashboardContent({
   cities: City[];
 }) {
   const [cityFilter, setCityFilter] = useState<string>("");
+  useAnalytics();
 
   const filteredAndSorted = useMemo(() => {
     let list = properties;

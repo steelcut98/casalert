@@ -11,6 +11,7 @@ import {
   type ReminderFrequency,
 } from "./actions";
 import { ResolutionForm } from "./ResolutionForm";
+import { useAnalytics } from "@/lib/useAnalytics";
 
 const DATA_PREVIEW_BASE =
   "https://data.cityofchicago.org/Buildings/Building-Violations/22u3-xenr/data_preview";
@@ -149,6 +150,7 @@ export function PropertyDetailClient({
   const [qualityTooltipOpen, setQualityTooltipOpen] = useState(false);
   const qualityTooltipRef = useRef<HTMLSpanElement>(null);
   const [resolutionViolation, setResolutionViolation] = useState<ViolationRow | null>(null);
+  const { trackEvent } = useAnalytics(propertyId);
 
   useEffect(() => {
     if (!infoPopoverAnchor) return;
@@ -289,6 +291,7 @@ export function PropertyDetailClient({
   }, [bulkReminderOn, openViolations, remindersByViolation]);
 
   function downloadCsv() {
+    trackEvent("export_requested", { violation_count: filteredForExport.length });
     const headers = [
       "Inspection Category",
       "Date",
@@ -390,7 +393,10 @@ export function PropertyDetailClient({
       >
         <div
           className="flex cursor-pointer items-start gap-3 px-4 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-          onClick={() => setExpandedId(isExpanded ? null : v.id)}
+          onClick={() => {
+            setExpandedId(isExpanded ? null : v.id);
+            if (!isExpanded) trackEvent("violation_expanded", { violation_id: v.id, violation_code: v.violation_code });
+          }}
         >
           <span
             className="mt-0.5 shrink-0 text-zinc-400"
@@ -475,7 +481,10 @@ export function PropertyDetailClient({
             {open && (!v.user_resolution_status || v.user_resolution_status === "open") && (
               <button
                 type="button"
-                onClick={() => setResolutionViolation(v)}
+                onClick={() => {
+                  setResolutionViolation(v);
+                  trackEvent("mark_resolved_clicked", { violation_id: v.id });
+                }}
                 className="rounded border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
               >
                 Mark as Resolved
@@ -489,6 +498,7 @@ export function PropertyDetailClient({
                 <button
                   type="button"
                   onClick={async () => {
+                    trackEvent("undo_resolution_clicked", { violation_id: v.id });
                     const result = await revertResolution(v.id, propertyId);
                     if (!result.error) window.location.reload();
                   }}
@@ -524,6 +534,7 @@ export function PropertyDetailClient({
                   type="button"
                   onClick={() => {
                     setReminderFormViolationId(v.id);
+                    trackEvent("reminder_set_clicked", { violation_id: v.id });
                     setReminderError(null);
                     if (reminder) {
                       setReminderDeadline(reminder.deadline_date);
@@ -714,7 +725,10 @@ export function PropertyDetailClient({
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => setPropertyInfoOpen(true)}
+          onClick={() => {
+            setPropertyInfoOpen(true);
+            trackEvent("property_info_opened");
+          }}
           className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-700"
         >
           <span aria-hidden>🏠</span>
@@ -986,7 +1000,10 @@ export function PropertyDetailClient({
           <button
             key={key}
             type="button"
-            onClick={() => setFilter(key)}
+            onClick={() => {
+              setFilter(key);
+              trackEvent("filter_applied", { filter: key });
+            }}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
               filter === key
                 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
