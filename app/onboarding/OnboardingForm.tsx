@@ -158,12 +158,20 @@ export function OnboardingForm({
               {propertyLimitLabel(plan) === "1" ? "property" : "properties"}.
               Upgrade to add more.
             </p>
-            <Link
-              href="/dashboard"
-              className="mt-3 inline-block text-sm font-medium text-amber-800 underline dark:text-amber-200"
-            >
-              Back to dashboard
-            </Link>
+            <div className="mt-3 flex items-center gap-3">
+              <a
+                href="/pricing"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+              >
+                Upgrade plan
+              </a>
+              <Link
+                href="/dashboard"
+                className="text-sm font-medium text-amber-800 underline dark:text-amber-200"
+              >
+                Back to dashboard
+              </Link>
+            </div>
           </div>
         )}
         {canAddProperty && (
