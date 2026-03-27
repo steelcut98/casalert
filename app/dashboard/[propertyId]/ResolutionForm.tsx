@@ -56,6 +56,14 @@ const AFFECTED_AREAS = [
   "Other",
 ];
 
+const CONTRACTOR_SOURCE_OPTIONS = [
+  "Already knew them",
+  "Online search",
+  "Referral from someone",
+  "Property management company",
+  "Other",
+];
+
 export function ResolutionForm({
   violationId,
   propertyId,
@@ -76,11 +84,14 @@ export function ResolutionForm({
   const [error, setError] = useState<string | null>(null);
 
   const [resolutionMethod, setResolutionMethod] = useState("");
+  const [resolutionMethodOther, setResolutionMethodOther] = useState("");
   const [fixDate, setFixDate] = useState("");
   const [emergencyFix, setEmergencyFix] = useState<string>("");
   const [isRecurring, setIsRecurring] = useState("");
+  const [contractorSource, setContractorSource] = useState("");
 
   const [costRange, setCostRange] = useState("");
+  const [exactCost, setExactCost] = useState("");
   const [multipleQuotes, setMultipleQuotes] = useState<string>("");
   const [quotesCount, setQuotesCount] = useState("");
 
@@ -90,8 +101,11 @@ export function ResolutionForm({
   const [contractorWebsite, setContractorWebsite] = useState("");
   const [wouldUseAgain, setWouldUseAgain] = useState("");
   const [contractorRating, setContractorRating] = useState(0);
+  const [starHover, setStarHover] = useState(0);
+  const [workOnSchedule, setWorkOnSchedule] = useState("");
 
   const [affectedAreas, setAffectedAreas] = useState<string[]>([]);
+  const [affectedAreaOther, setAffectedAreaOther] = useState("");
   const [additionalIssues, setAdditionalIssues] = useState<string>("");
   const [additionalIssuesDesc, setAdditionalIssuesDesc] = useState("");
   const [fixDescription, setFixDescription] = useState("");
@@ -131,13 +145,30 @@ export function ResolutionForm({
     );
   }
 
+  function buildFinalAffectedAreas(): string[] {
+    const areas = affectedAreas.filter((a) => a !== "Other");
+    if (affectedAreas.includes("Other") && affectedAreaOther.trim()) {
+      areas.push(`Other: ${affectedAreaOther.trim()}`);
+    } else if (affectedAreas.includes("Other")) {
+      areas.push("Other");
+    }
+    return areas;
+  }
+
+  function buildResolutionMethod(): string {
+    if (resolutionMethod === "Other" && resolutionMethodOther.trim()) {
+      return `Other: ${resolutionMethodOther.trim()}`;
+    }
+    return resolutionMethod;
+  }
+
   async function handleSubmit() {
     setSubmitting(true);
     setError(null);
     const result = await submitResolution({
       violationId,
       propertyId,
-      resolutionMethod,
+      resolutionMethod: buildResolutionMethod(),
       fixDate: fixDate || null,
       emergencyFix:
         emergencyFix === "Emergency"
@@ -147,6 +178,7 @@ export function ResolutionForm({
             : null,
       isRecurring,
       costRange,
+      exactCost: exactCost ? Number(exactCost) : null,
       multipleQuotes: multipleQuotes === "Yes",
       quotesCount: multipleQuotes === "Yes" && quotesCount ? Number(quotesCount) : null,
       contractorName: contractorName || null,
@@ -155,7 +187,9 @@ export function ResolutionForm({
       contractorWebsite: contractorWebsite || null,
       wouldUseAgain: wouldUseAgain || null,
       contractorRating: contractorRating > 0 ? contractorRating : null,
-      affectedAreas,
+      contractorSource: contractorSource || null,
+      workOnSchedule: workOnSchedule || null,
+      affectedAreas: buildFinalAffectedAreas(),
       additionalIssuesFound: additionalIssues === "Yes",
       additionalIssuesDescription:
         additionalIssues === "Yes" ? additionalIssuesDesc || null : null,
@@ -176,6 +210,8 @@ export function ResolutionForm({
     "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm";
   const radioSelected = "border-zinc-500 bg-zinc-700/60 text-zinc-100";
   const radioUnselected = "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600";
+  const inputCls =
+    "w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500";
 
   function RadioGroup({
     options,
@@ -208,23 +244,31 @@ export function ResolutionForm({
 
   function StarRating({
     value,
+    hover,
     onChange,
+    onHover,
+    onLeave,
   }: {
     value: number;
+    hover: number;
     onChange: (v: number) => void;
+    onHover: (v: number) => void;
+    onLeave: () => void;
   }) {
+    const active = hover || value;
     return (
-      <div className="flex gap-1">
+      <div className="flex gap-1" onMouseLeave={onLeave}>
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
             type="button"
             onClick={() => onChange(star)}
-            className={`text-2xl transition-colors ${
-              star <= value ? "text-amber-400" : "text-zinc-600 hover:text-zinc-500"
+            onMouseEnter={() => onHover(star)}
+            className={`h-8 w-8 flex items-center justify-center text-2xl transition-colors ${
+              star <= active ? "text-amber-400" : "text-zinc-600 hover:text-zinc-500"
             }`}
           >
-            ★
+            {star <= active ? "★" : "☆"}
           </button>
         ))}
       </div>
@@ -240,6 +284,17 @@ export function ResolutionForm({
           value={resolutionMethod}
           onChange={setResolutionMethod}
         />
+        {resolutionMethod === "Other" && (
+          <div className="mt-3">
+            <input
+              type="text"
+              value={resolutionMethodOther}
+              onChange={(e) => setResolutionMethodOther(e.target.value)}
+              className={inputCls}
+              placeholder="Please describe..."
+            />
+          </div>
+        )}
       </div>
       <div>
         <label className={labelCls}>When was the fix completed?</label>
@@ -247,7 +302,7 @@ export function ResolutionForm({
           type="date"
           value={fixDate}
           onChange={(e) => setFixDate(e.target.value)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+          className={inputCls}
         />
       </div>
       <div>
@@ -268,6 +323,16 @@ export function ResolutionForm({
           onChange={setIsRecurring}
         />
       </div>
+      {needsContractor && (
+        <div>
+          <label className={labelCls}>How did you find the contractor/repair person?</label>
+          <RadioGroup
+            options={CONTRACTOR_SOURCE_OPTIONS}
+            value={contractorSource}
+            onChange={setContractorSource}
+          />
+        </div>
+      )}
     </div>
   );
 
@@ -280,6 +345,21 @@ export function ResolutionForm({
           value={costRange}
           onChange={setCostRange}
         />
+      </div>
+      <div>
+        <label className={labelCls}>Exact amount if known (optional)</label>
+        <div className="flex items-center gap-1">
+          <span className="text-sm text-zinc-400">$</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={exactCost}
+            onChange={(e) => setExactCost(e.target.value)}
+            className="w-40 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+            placeholder="e.g. 850"
+          />
+        </div>
       </div>
       <div>
         <label className={labelCls}>Did you get multiple quotes?</label>
@@ -306,13 +386,16 @@ export function ResolutionForm({
 
   const renderStep3Contractor = () => (
     <div className="space-y-5">
+      <p className="text-sm italic text-zinc-400">
+        Sharing contractor details helps CasAlert find you the best-rated, most cost-effective pros when future issues come up.
+      </p>
       <div>
         <label className={labelCls}>Contractor/company name</label>
         <input
           type="text"
           value={contractorName}
           onChange={(e) => setContractorName(e.target.value)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+          className={inputCls}
           placeholder="Name"
         />
       </div>
@@ -321,7 +404,7 @@ export function ResolutionForm({
         <select
           value={contractorTrade}
           onChange={(e) => setContractorTrade(e.target.value)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+          className={inputCls}
         >
           <option value="">Select trade...</option>
           {CONTRACTOR_TRADES.map((t) => (
@@ -337,7 +420,7 @@ export function ResolutionForm({
           type="tel"
           value={contractorPhone}
           onChange={(e) => setContractorPhone(e.target.value)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+          className={inputCls}
           placeholder="(555) 555-5555"
         />
       </div>
@@ -347,8 +430,16 @@ export function ResolutionForm({
           type="url"
           value={contractorWebsite}
           onChange={(e) => setContractorWebsite(e.target.value)}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+          className={inputCls}
           placeholder="https://..."
+        />
+      </div>
+      <div>
+        <label className={labelCls}>Was the work completed on the scheduled date?</label>
+        <RadioGroup
+          options={["Yes", "No, it was delayed", "N/A"]}
+          value={workOnSchedule}
+          onChange={setWorkOnSchedule}
         />
       </div>
       <div>
@@ -361,7 +452,13 @@ export function ResolutionForm({
       </div>
       <div>
         <label className={labelCls}>Rate their work</label>
-        <StarRating value={contractorRating} onChange={setContractorRating} />
+        <StarRating
+          value={contractorRating}
+          hover={starHover}
+          onChange={setContractorRating}
+          onHover={setStarHover}
+          onLeave={() => setStarHover(0)}
+        />
       </div>
     </div>
   );
@@ -388,6 +485,17 @@ export function ResolutionForm({
             </label>
           ))}
         </div>
+        {affectedAreas.includes("Other") && (
+          <div className="mt-3">
+            <input
+              type="text"
+              value={affectedAreaOther}
+              onChange={(e) => setAffectedAreaOther(e.target.value)}
+              className={inputCls}
+              placeholder="Please specify..."
+            />
+          </div>
+        )}
       </div>
       <div>
         <label className={labelCls}>
@@ -404,7 +512,7 @@ export function ResolutionForm({
               type="text"
               value={additionalIssuesDesc}
               onChange={(e) => setAdditionalIssuesDesc(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              className={inputCls}
               placeholder="Describe the additional issues..."
             />
           </div>
@@ -418,7 +526,7 @@ export function ResolutionForm({
           value={fixDescription}
           onChange={(e) => setFixDescription(e.target.value)}
           rows={3}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500 resize-none"
+          className={`${inputCls} resize-none`}
           placeholder="Replaced the broken smoke detector on the second floor..."
         />
       </div>
@@ -481,10 +589,13 @@ export function ResolutionForm({
                 {violationDescription}
               </p>
             )}
+            <p className="mt-2 text-sm italic text-zinc-400">
+              The more details you share, the better CasAlert can assist you — from tracking your costs, to finding the right contractors, to alerting you faster when similar issues come up.
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors text-xl leading-none"
+            className="self-start text-zinc-500 hover:text-zinc-300 transition-colors text-xl leading-none ml-4"
           >
             ✕
           </button>

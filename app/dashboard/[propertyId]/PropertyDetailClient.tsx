@@ -7,6 +7,7 @@ import {
   clearViolationReminder,
   setBulkViolationReminders,
   rescanPropertyViolations,
+  revertResolution,
   type ReminderFrequency,
 } from "./actions";
 import { ResolutionForm } from "./ResolutionForm";
@@ -275,9 +276,15 @@ export function PropertyDetailClient({
       "Address",
       "Inspector comments",
       "Ordinance",
+      "Resolution Status",
     ];
     const escape = (s: string) =>
       /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    function resolutionLabel(status: string | null | undefined): string {
+      if (status === "pending_verification") return "Pending Verification";
+      if (status === "verified_resolved") return "Verified Resolved";
+      return "Open";
+    }
     const rows = filteredForExport.map((v) =>
       [
         v.inspection_category ?? "",
@@ -290,6 +297,7 @@ export function PropertyDetailClient({
         v.address ?? "",
         v.violation_inspector_comments ?? "",
         v.violation_ordinance ?? "",
+        resolutionLabel(v.user_resolution_status),
       ].map((x) => escape(String(x ?? ""))).join(",")
     );
     const csv = [headers.join(","), ...rows].join("\n");
@@ -341,16 +349,22 @@ export function PropertyDetailClient({
             : "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-200";
     const showReminderForm = reminderFormViolationId === v.id;
 
+    const isPending = v.user_resolution_status === "pending_verification";
+    const borderColor = isPending
+      ? "border-amber-400"
+      : open
+        ? openViolations.length <= 2
+          ? "border-amber-500"
+          : "border-red-500"
+        : "border-zinc-300 dark:border-zinc-600";
+    const rowBg = isPending
+      ? "bg-white bg-amber-950/5 dark:bg-zinc-900 dark:bg-amber-950/5"
+      : "bg-white dark:bg-zinc-900";
+
     return (
       <div
         key={v.id}
-        className={`border-l-4 ${
-          open
-            ? openViolations.length <= 2
-              ? "border-amber-500"
-              : "border-red-500"
-            : "border-zinc-300 dark:border-zinc-600"
-        } bg-white dark:bg-zinc-900`}
+        className={`border-l-4 ${borderColor} ${rowBg}`}
       >
         <div
           className="flex cursor-pointer items-start gap-3 px-4 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
@@ -419,9 +433,21 @@ export function PropertyDetailClient({
               </button>
             )}
             {v.user_resolution_status === "pending_verification" && (
-              <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
-                ⏳ Pending verification
-              </span>
+              <>
+                <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                  ⏳ Pending verification
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const result = await revertResolution(v.id, propertyId);
+                    if (!result.error) window.location.reload();
+                  }}
+                  className="ml-1 text-xs text-zinc-500 hover:text-zinc-300 hover:underline"
+                >
+                  Undo
+                </button>
+              </>
             )}
             {v.user_resolution_status === "verified_resolved" && (
               <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
@@ -464,28 +490,6 @@ export function PropertyDetailClient({
                 </button>
               </>
             )}
-            <a
-              href={isPhiladelphia ? cityDataUrl : `${DATA_PREVIEW_BASE}?column=address&value=${encodeURIComponent(v.address ?? propertyAddress)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              City data
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
-            <a
-              href={buildingRecordsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Building Records
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
           </div>
         </div>
         {showReminderForm && open && (

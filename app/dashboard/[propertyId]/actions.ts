@@ -279,6 +279,7 @@ export async function submitResolution(data: {
   emergencyFix: boolean | null;
   isRecurring: string;
   costRange: string;
+  exactCost: number | null;
   multipleQuotes: boolean;
   quotesCount: number | null;
   contractorName: string | null;
@@ -287,6 +288,8 @@ export async function submitResolution(data: {
   contractorWebsite: string | null;
   wouldUseAgain: string | null;
   contractorRating: number | null;
+  contractorSource: string | null;
+  workOnSchedule: string | null;
   affectedAreas: string[];
   additionalIssuesFound: boolean;
   additionalIssuesDescription: string | null;
@@ -312,6 +315,7 @@ export async function submitResolution(data: {
       is_recurring: data.isRecurring,
       cost_range: data.costRange,
       cost: null,
+      exact_cost: data.exactCost ?? null,
       multiple_quotes: data.multipleQuotes,
       quotes_count: data.quotesCount,
       contractor_name: data.contractorName,
@@ -326,6 +330,8 @@ export async function submitResolution(data: {
           : data.wouldUseAgain === "No"
             ? false
             : null,
+      contractor_source: data.contractorSource ?? null,
+      work_on_schedule: data.workOnSchedule ?? null,
       affected_areas: data.affectedAreas,
       additional_issues_found: data.additionalIssuesFound,
       additional_issues_description: data.additionalIssuesDescription,
@@ -390,6 +396,43 @@ export async function submitResolution(data: {
   }
 
   revalidatePath(`/dashboard/${data.propertyId}`);
+  return {};
+}
+
+export async function revertResolution(
+  violationId: string,
+  propertyId: string
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const { error } = await supabase
+    .from("violations")
+    .update({
+      user_resolution_status: "open",
+      user_resolved_at: null,
+      verification_deadline: null,
+    })
+    .eq("id", violationId);
+
+  if (error) return { error: error.message };
+
+  await logComplianceEvent({
+    propertyId,
+    userId: user.id,
+    eventType: "violation_resolved_by_user",
+    violationId,
+    eventData: {
+      description: "User reverted resolution status back to open",
+      old_status: "pending_verification",
+      new_status: "open",
+    },
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
   return {};
 }
 
