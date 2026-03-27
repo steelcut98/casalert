@@ -69,6 +69,7 @@ export function ResolutionForm({
   propertyId,
   violationDescription,
   violationCode,
+  violationDate,
   onClose,
   onSubmitted,
 }: {
@@ -76,6 +77,7 @@ export function ResolutionForm({
   propertyId: string;
   violationDescription: string | null;
   violationCode: string | null;
+  violationDate: string | null;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
@@ -302,8 +304,14 @@ export function ResolutionForm({
           type="date"
           value={fixDate}
           onChange={(e) => setFixDate(e.target.value)}
+          min={violationDate ? new Date(violationDate).toISOString().split("T")[0] : undefined}
           className={inputCls}
         />
+        {violationDate && (
+          <p className="mt-1 text-xs text-zinc-500">
+            Complaint filed: {new Date(violationDate).toLocaleDateString()}
+          </p>
+        )}
       </div>
       <div>
         <label className={labelCls}>

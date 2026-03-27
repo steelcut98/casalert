@@ -1121,6 +1121,7 @@ export function PropertyDetailClient({
           propertyId={propertyId}
           violationDescription={resolutionViolation.violation_description ?? null}
           violationCode={resolutionViolation.violation_code ?? null}
+          violationDate={resolutionViolation.violation_date ?? null}
           onClose={() => setResolutionViolation(null)}
           onSubmitted={() => {
             setResolutionViolation(null);
