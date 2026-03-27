@@ -58,6 +58,25 @@ const REFERRAL_SOURCES = [
   "Other",
 ];
 
+const OCCUPIED_STATUS = ["Occupied", "Vacant", "Partially occupied"];
+
+const ACQUISITION_METHODS = [
+  "Purchased",
+  "Inherited",
+  "Built",
+  "Foreclosure",
+  "Other",
+];
+
+const TOTAL_PROPERTIES = [
+  "Just this one",
+  "2-5",
+  "6-10",
+  "11-25",
+  "26-50",
+  "50+",
+];
+
 const radioClass =
   "h-4 w-4 border-zinc-700 bg-zinc-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 dark:border-zinc-600";
 const checkboxClass =
@@ -74,6 +93,13 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
   const [surprisedByViolation, setSurprisedByViolation] = useState<string>("");
   const [helpWith, setHelpWith] = useState<string[]>([]);
   const [referralSource, setReferralSource] = useState<string>("");
+  const [occupiedStatus, setOccupiedStatus] = useState<string>("");
+  const [acquisitionYear, setAcquisitionYear] = useState<string>("");
+  const [acquisitionMethod, setAcquisitionMethod] = useState<string>("");
+  const [hasPreferredContractor, setHasPreferredContractor] = useState<string>("");
+  const [preferredContractorName, setPreferredContractorName] = useState<string>("");
+  const [totalProperties, setTotalProperties] = useState<string>("");
+  const [propertyManagementCompany, setPropertyManagementCompany] = useState<string>("");
 
   useEffect(() => {
     const t = requestAnimationFrame(() => setMounted(true));
@@ -90,12 +116,19 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
           propertyId,
           property_type: propertyType || null,
           management_type: managementType || null,
+          property_management_company: propertyManagementCompany || null,
           approximate_rent: approximateRent || null,
+          occupied_status: occupiedStatus || null,
+          acquisition_year: acquisitionYear ? parseInt(acquisitionYear) : null,
+          acquisition_method: acquisitionMethod || null,
           last_inspected: lastInspected || null,
           surprised_by_violation: surprisedByViolation || null,
+          has_preferred_contractor: hasPreferredContractor === "Yes" ? true : hasPreferredContractor === "No" ? false : null,
+          preferred_contractor_name: preferredContractorName || null,
           ...(showUserQuestions && {
             biggest_concerns: helpWith.length > 0 ? helpWith : null,
             referral_source: referralSource || null,
+            total_properties_owned: totalProperties || null,
           }),
         }),
       });
@@ -129,7 +162,7 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
         aria-hidden="true"
       />
       <div
-        className={`relative w-full max-w-lg rounded-xl bg-zinc-900 p-8 shadow-xl transition-opacity duration-200 ${
+        className={`relative w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-zinc-900 p-8 shadow-xl transition-opacity duration-200 ${
           mounted ? "opacity-100" : "opacity-0"
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -168,6 +201,29 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
 
           <div className="mb-6">
             <p className="text-sm font-medium text-zinc-300">
+              Is this property currently occupied?
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {OCCUPIED_STATUS.map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    type="radio"
+                    name="occupied_status"
+                    checked={occupiedStatus === opt}
+                    onChange={() => setOccupiedStatus(opt)}
+                    className={radioClass}
+                  />
+                  <span className="text-sm text-zinc-300">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">
               How is this property managed?
             </p>
             <div className="mt-2 flex flex-wrap gap-3">
@@ -189,6 +245,23 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
             </div>
           </div>
 
+          {(managementType === "Property manager" || managementType === "Both") && (
+            <div className="mb-6">
+              <p className="text-sm font-medium text-zinc-300">
+                Property management company name (optional)
+              </p>
+              <div className="mt-2">
+                <input
+                  type="text"
+                  value={propertyManagementCompany}
+                  onChange={(e) => setPropertyManagementCompany(e.target.value)}
+                  placeholder="Company name"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="mb-6">
             <p className="text-sm font-medium text-zinc-300">
               Approximate monthly rent
@@ -204,6 +277,46 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
                     name="approximate_rent"
                     checked={approximateRent === opt}
                     onChange={() => setApproximateRent(opt)}
+                    className={radioClass}
+                  />
+                  <span className="text-sm text-zinc-300">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">
+              When did you acquire this property?
+            </p>
+            <div className="mt-2">
+              <input
+                type="number"
+                value={acquisitionYear}
+                onChange={(e) => setAcquisitionYear(e.target.value)}
+                placeholder="e.g. 2019"
+                min={1900}
+                max={new Date().getFullYear()}
+                className="w-32 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">
+              How did you acquire this property?
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {ACQUISITION_METHODS.map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    type="radio"
+                    name="acquisition_method"
+                    checked={acquisitionMethod === opt}
+                    onChange={() => setAcquisitionMethod(opt)}
                     className={radioClass}
                   />
                   <span className="text-sm text-zinc-300">{opt}</span>
@@ -259,8 +372,65 @@ export function PropertyQuestionnaire({ propertyId, showUserQuestions }: Props) 
             </div>
           </div>
 
+          <div className="mb-6">
+            <p className="text-sm font-medium text-zinc-300">
+              Do you have a preferred contractor or handyman?
+            </p>
+            <div className="mt-2 flex gap-4">
+              {["Yes", "No"].map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    type="radio"
+                    name="has_preferred_contractor"
+                    checked={hasPreferredContractor === opt}
+                    onChange={() => setHasPreferredContractor(opt)}
+                    className={radioClass}
+                  />
+                  <span className="text-sm text-zinc-300">{opt}</span>
+                </label>
+              ))}
+            </div>
+            {hasPreferredContractor === "Yes" && (
+              <div className="mt-3">
+                <input
+                  type="text"
+                  value={preferredContractorName}
+                  onChange={(e) => setPreferredContractorName(e.target.value)}
+                  placeholder="e.g. ABC Plumbing"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+            )}
+          </div>
+
           {showUserQuestions && (
             <>
+              <div className="mb-6">
+                <p className="text-sm font-medium text-zinc-300">
+                  How many rental properties do you own in total?
+                </p>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                  {TOTAL_PROPERTIES.map((opt) => (
+                    <label
+                      key={opt}
+                      className="flex cursor-pointer items-center gap-2"
+                    >
+                      <input
+                        type="radio"
+                        name="total_properties"
+                        checked={totalProperties === opt}
+                        onChange={() => setTotalProperties(opt)}
+                        className={radioClass}
+                      />
+                      <span className="text-sm text-zinc-300">{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               <div className="mb-6">
                 <p className="text-sm font-medium text-zinc-300">
                   What would you most like CasAlerts to help with?
