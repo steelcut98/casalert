@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       eventType,
       propertyId: propertyId ?? null,
       pagePath: pagePath ?? null,
-      eventData: eventData ?? null,
+      eventData: eventData ?? undefined,
     });
 
     return NextResponse.json({ ok: true });
