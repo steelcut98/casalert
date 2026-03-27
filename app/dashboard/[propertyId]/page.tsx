@@ -134,6 +134,11 @@ export default async function PropertyDetailPage({
     user_resolution_status: v.user_resolution_status ?? null,
   }));
 
+  const { data: resolutions } = await supabase
+    .from("violation_resolutions")
+    .select("violation_id, resolution_method, cost_range, exact_cost, contractor_name, contractor_trade, fix_date, affected_areas")
+    .eq("property_id", propertyId);
+
   const violationIds = rows.map((r) => r.id);
   const { data: reminders } =
     violationIds.length > 0
@@ -226,6 +231,7 @@ export default async function PropertyDetailPage({
           remindersByViolation={Object.fromEntries(remindersByViolation)}
           citySlug={city?.slug ?? "chicago"}
           propertyDetails={propertyDetails}
+          resolutions={resolutions ?? []}
         />
       </main>
     </div>

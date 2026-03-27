@@ -104,6 +104,7 @@ export function PropertyDetailClient({
   remindersByViolation,
   citySlug = "chicago",
   propertyDetails = null,
+  resolutions = [],
 }: {
   propertyId: string;
   violations: ViolationRow[];
@@ -114,6 +115,16 @@ export function PropertyDetailClient({
   remindersByViolation: Record<string, ReminderInfo>;
   citySlug?: string;
   propertyDetails?: PropertyDetailsDisplay | null;
+  resolutions?: Array<{
+    violation_id: string;
+    resolution_method: string | null;
+    cost_range: string | null;
+    exact_cost: number | null;
+    contractor_name: string | null;
+    contractor_trade: string | null;
+    fix_date: string | null;
+    affected_areas: string[] | null;
+  }>;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -174,14 +185,25 @@ export function PropertyDetailClient({
 
   const isOpen = (v: ViolationRow) =>
     (v.violation_status ?? "").toUpperCase() === "OPEN";
+  const pendingVerificationViolations = useMemo(
+    () => violations.filter(v => v.user_resolution_status === "pending_verification"),
+    [violations]
+  );
   const openViolations = useMemo(
-    () => violations.filter(isOpen),
+    () => violations.filter(v => isOpen(v) && v.user_resolution_status !== "pending_verification"),
     [violations]
   );
   const historicalViolations = useMemo(
     () => violations.filter((v) => !isOpen(v)),
     [violations]
   );
+  const resolutionByViolation = useMemo(() => {
+    const map = new Map<string, (typeof resolutions)[number]>();
+    for (const r of resolutions) {
+      map.set(r.violation_id, r);
+    }
+    return map;
+  }, [resolutions]);
 
   const allOpenHaveReminders =
     openViolations.length > 0 &&
@@ -421,6 +443,33 @@ export function PropertyDetailClient({
             <p className="mt-0.5 max-w-xl truncate text-sm text-zinc-700 dark:text-zinc-300">
               {v.violation_description ?? "—"}
             </p>
+            {resolutionByViolation.has(v.id) && (() => {
+              const res = resolutionByViolation.get(v.id)!;
+              return (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                  {res.cost_range && (
+                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300">
+                      Cost: {res.exact_cost ? `$${res.exact_cost.toLocaleString()}` : res.cost_range}
+                    </span>
+                  )}
+                  {res.contractor_name && (
+                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300">
+                      {res.contractor_name}{res.contractor_trade ? ` (${res.contractor_trade})` : ""}
+                    </span>
+                  )}
+                  {res.resolution_method && (
+                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300">
+                      {res.resolution_method}
+                    </span>
+                  )}
+                  {res.fix_date && (
+                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300">
+                      Fixed: {new Date(res.fix_date).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
             {open && (!v.user_resolution_status || v.user_resolution_status === "open") && (
@@ -906,6 +955,11 @@ export function PropertyDetailClient({
         <span className="text-sm text-zinc-600 dark:text-zinc-400">
           {totalClosed} closed
         </span>
+        {pendingVerificationViolations.length > 0 && (
+          <span className="text-sm text-amber-600 dark:text-amber-400">
+            {pendingVerificationViolations.length} pending verification
+          </span>
+        )}
         <span className="text-sm text-zinc-600 dark:text-zinc-400">
           Compliance rate: {complianceRate}%
         </span>
@@ -1099,6 +1153,17 @@ export function PropertyDetailClient({
             )}
           </div>
         </section>
+
+        {pendingVerificationViolations.length > 0 && (
+          <section>
+            <h2 className="mb-2 text-lg font-medium text-amber-600 dark:text-amber-400">
+              Pending verification ({pendingVerificationViolations.length})
+            </h2>
+            <div className="space-y-1 rounded-lg border border-amber-200/30 dark:border-amber-800/30">
+              {pendingVerificationViolations.map((v) => renderRow(v, false))}
+            </div>
+          </section>
+        )}
 
         <section>
           <h2 className="mb-2 text-lg font-medium text-zinc-700 dark:text-zinc-300">

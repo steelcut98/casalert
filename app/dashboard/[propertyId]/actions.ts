@@ -171,7 +171,21 @@ export async function rescanPropertyViolations(
     .single();
   if (!city) return { error: "City not found" };
 
-  // Delete all existing violations for this property so we can repopulate with full fields
+  const { data: existingViolations } = await supabase
+    .from("violations")
+    .select("external_id, user_resolution_status, user_resolved_at, verification_deadline")
+    .eq("property_id", propertyId);
+
+  const resolutionStatusMap = new Map(
+    (existingViolations ?? [])
+      .filter(v => v.user_resolution_status && v.user_resolution_status !== "open")
+      .map(v => [v.external_id, {
+        user_resolution_status: v.user_resolution_status,
+        user_resolved_at: v.user_resolved_at,
+        verification_deadline: v.verification_deadline,
+      }])
+  );
+
   const { error: deleteErr } = await supabase
     .from("violations")
     .delete()
@@ -226,6 +240,9 @@ export async function rescanPropertyViolations(
     needs_alert: false,
     first_seen_at: new Date().toISOString(),
     source_dataset: city.slug === "philadelphia" ? "philadelphia" : "building",
+    user_resolution_status: resolutionStatusMap.get(row.id)?.user_resolution_status ?? "open",
+    user_resolved_at: resolutionStatusMap.get(row.id)?.user_resolved_at ?? null,
+    verification_deadline: resolutionStatusMap.get(row.id)?.verification_deadline ?? null,
   }));
 
   if (toInsert.length > 0) {
