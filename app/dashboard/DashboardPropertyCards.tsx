@@ -157,7 +157,7 @@ export function DashboardPropertyCards({
                       {overdueCount} overdue
                     </span>
                   );
-                } else if (hoursAgo <= 6) {
+                } else if (hoursAgo <= 24) {
                   statusBadge = (
                     <span className="inline-flex rounded px-1.5 py-0.5 font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
                       All up to date
