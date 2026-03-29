@@ -160,8 +160,6 @@ export default async function PropertyDetailPage({
     ])
   );
 
-  const openViolationsForScore = rows.filter((v) => (v.violation_status ?? "").toUpperCase() === "OPEN" && v.user_resolution_status !== "pending_verification");
-  const complaintViolationsForScore = openViolationsForScore.filter((v) => (v.inspection_category ?? "").toUpperCase() === "COMPLAINT");
   const pendingVerificationForScore = rows.filter((v) => v.user_resolution_status === "pending_verification");
 
   const { data: resolutionsForScore } = await supabase
@@ -185,9 +183,14 @@ export default async function PropertyDetailPage({
   }
 
   const complianceScore = calculateComplianceScore({
-    totalViolations: rows.length,
-    openViolations: openViolationsForScore.length,
-    complaintViolations: complaintViolationsForScore.length,
+    violations: rows.map((v) => ({
+      violation_description: v.violation_description ?? null,
+      violation_code: v.violation_code ?? null,
+      inspection_category: v.inspection_category ?? null,
+      violation_status: v.violation_status ?? null,
+      violation_date: v.violation_date ?? null,
+      user_resolution_status: v.user_resolution_status ?? null,
+    })),
     resolvedCount: (resolutionsForScore ?? []).length,
     pendingVerificationCount: pendingVerificationForScore.length,
     overdueDeadlines: (overdueRemindersForScore ?? []).length,

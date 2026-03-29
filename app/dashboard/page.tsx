@@ -233,16 +233,24 @@ export default async function DashboardPage() {
 
     const { data: allViolationsForTotal } = await supabase
       .from("violations")
-      .select("property_id, violation_status, violation_date, first_seen_at")
+      .select("property_id, violation_status, violation_date, violation_description, violation_code, inspection_category, user_resolution_status, first_seen_at")
       .in("property_id", properties.map((p) => p.id));
 
     for (const p of properties) {
-      const propViolations = (allViolationsForTotal ?? []).filter((v) => v.property_id === p.id);
       const propResolutions = (allResolutionsForScore ?? []).filter((r) => r.property_id === p.id);
       const propPending = (allPendingForScore ?? []).filter((v) => v.property_id === p.id);
       const propOverdue = (allViolationsForOverdue ?? []).filter((v) => v.property_id === p.id);
 
-      const vStats = violationsByProperty[p.id] ?? { open: 0, complaint: 0, byCategory: {} };
+      const propViolationObjects = (allViolationsForTotal ?? [])
+        .filter((v) => v.property_id === p.id)
+        .map((v) => ({
+          violation_description: v.violation_description ?? null,
+          violation_code: v.violation_code ?? null,
+          inspection_category: v.inspection_category ?? null,
+          violation_status: v.violation_status ?? null,
+          violation_date: v.violation_date ?? null,
+          user_resolution_status: v.user_resolution_status ?? null,
+        }));
 
       let fastResolutions = 0;
       for (const r of propResolutions) {
@@ -253,9 +261,7 @@ export default async function DashboardPage() {
       }
 
       const result = calculateComplianceScore({
-        totalViolations: propViolations.length,
-        openViolations: vStats.open,
-        complaintViolations: vStats.complaint,
+        violations: propViolationObjects,
         resolvedCount: propResolutions.length,
         pendingVerificationCount: propPending.length,
         overdueDeadlines: propOverdue.length,
