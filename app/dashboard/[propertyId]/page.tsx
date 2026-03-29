@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { PropertyDetailClient } from "./PropertyDetailClient";
 import { PropertyNickname } from "./PropertyNickname";
 import { RescanButton } from "./RescanButton";
+import { calculateComplianceScore } from "@/lib/compliance-score";
 
 export default async function PropertyDetailPage({
   params,
@@ -159,6 +160,43 @@ export default async function PropertyDetailPage({
     ])
   );
 
+  const openViolationsForScore = rows.filter((v) => (v.violation_status ?? "").toUpperCase() === "OPEN" && v.user_resolution_status !== "pending_verification");
+  const complaintViolationsForScore = openViolationsForScore.filter((v) => (v.inspection_category ?? "").toUpperCase() === "COMPLAINT");
+  const pendingVerificationForScore = rows.filter((v) => v.user_resolution_status === "pending_verification");
+
+  const { data: resolutionsForScore } = await supabase
+    .from("violation_resolutions")
+    .select("is_recurring, deadline_met, fix_date, created_at")
+    .eq("property_id", propertyId);
+
+  const { data: overdueRemindersForScore } = await supabase
+    .from("violation_reminders")
+    .select("violation_id")
+    .eq("is_active", true)
+    .lt("deadline_date", new Date().toISOString().split("T")[0])
+    .in("violation_id", rows.map((r) => r.id));
+
+  let fastResolutionsCount = 0;
+  for (const r of resolutionsForScore ?? []) {
+    if (r.fix_date && r.created_at) {
+      const daysDiff = (new Date(r.fix_date).getTime() - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysDiff <= 14) fastResolutionsCount++;
+    }
+  }
+
+  const complianceScore = calculateComplianceScore({
+    totalViolations: rows.length,
+    openViolations: openViolationsForScore.length,
+    complaintViolations: complaintViolationsForScore.length,
+    resolvedCount: (resolutionsForScore ?? []).length,
+    pendingVerificationCount: pendingVerificationForScore.length,
+    overdueDeadlines: (overdueRemindersForScore ?? []).length,
+    fastResolutions: fastResolutionsCount,
+    recurringIssues: (resolutionsForScore ?? []).filter((r) => r.is_recurring === "Ongoing problem").length,
+    deadlinesMet: (resolutionsForScore ?? []).filter((r) => r.deadline_met === true).length,
+    deadlinesMissed: (resolutionsForScore ?? []).filter((r) => r.deadline_met === false).length,
+  });
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -232,6 +270,7 @@ export default async function PropertyDetailPage({
           citySlug={city?.slug ?? "chicago"}
           propertyDetails={propertyDetails}
           resolutions={resolutions ?? []}
+          complianceScore={complianceScore}
         />
       </main>
     </div>

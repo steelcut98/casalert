@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { DashboardContent } from "./DashboardContent";
+import { calculateComplianceScore } from "@/lib/compliance-score";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -202,6 +203,72 @@ export default async function DashboardPage() {
     }
   }
 
+  let scoresByProperty: Record<string, { score: number; grade: string; gradeColor: string }> = {};
+  if (properties && properties.length > 0) {
+    const { data: allResolutionsForScore } = await supabase
+      .from("violation_resolutions")
+      .select("property_id, is_recurring, deadline_met, fix_date, created_at")
+      .in("property_id", properties.map((p) => p.id));
+
+    const { data: allPendingForScore } = await supabase
+      .from("violations")
+      .select("property_id")
+      .in("property_id", properties.map((p) => p.id))
+      .eq("user_resolution_status", "pending_verification");
+
+    const { data: allOverdueReminders } = await supabase
+      .from("violation_reminders")
+      .select("violation_id")
+      .eq("is_active", true)
+      .lt("deadline_date", new Date().toISOString().split("T")[0]);
+
+    const overdueViolationIds = new Set((allOverdueReminders ?? []).map((r) => r.violation_id));
+
+    const { data: allViolationsForOverdue } = overdueViolationIds.size > 0
+      ? await supabase
+          .from("violations")
+          .select("id, property_id")
+          .in("id", Array.from(overdueViolationIds))
+      : { data: [] };
+
+    const { data: allViolationsForTotal } = await supabase
+      .from("violations")
+      .select("property_id, violation_status, violation_date, first_seen_at")
+      .in("property_id", properties.map((p) => p.id));
+
+    for (const p of properties) {
+      const propViolations = (allViolationsForTotal ?? []).filter((v) => v.property_id === p.id);
+      const propResolutions = (allResolutionsForScore ?? []).filter((r) => r.property_id === p.id);
+      const propPending = (allPendingForScore ?? []).filter((v) => v.property_id === p.id);
+      const propOverdue = (allViolationsForOverdue ?? []).filter((v) => v.property_id === p.id);
+
+      const vStats = violationsByProperty[p.id] ?? { open: 0, complaint: 0, byCategory: {} };
+
+      let fastResolutions = 0;
+      for (const r of propResolutions) {
+        if (r.fix_date && r.created_at) {
+          const daysDiff = (new Date(r.fix_date).getTime() - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24);
+          if (daysDiff <= 14) fastResolutions++;
+        }
+      }
+
+      const result = calculateComplianceScore({
+        totalViolations: propViolations.length,
+        openViolations: vStats.open,
+        complaintViolations: vStats.complaint,
+        resolvedCount: propResolutions.length,
+        pendingVerificationCount: propPending.length,
+        overdueDeadlines: propOverdue.length,
+        fastResolutions,
+        recurringIssues: propResolutions.filter((r) => r.is_recurring === "Ongoing problem").length,
+        deadlinesMet: propResolutions.filter((r) => r.deadline_met === true).length,
+        deadlinesMissed: propResolutions.filter((r) => r.deadline_met === false).length,
+      });
+
+      scoresByProperty[p.id] = { score: result.score, grade: result.grade, gradeColor: result.gradeColor };
+    }
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -272,6 +339,7 @@ export default async function DashboardPage() {
           newViolationsByProperty={newViolationsByProperty}
           overdueByProperty={overdueByProperty}
           resolutionsByProperty={resolutionsByProperty}
+          scoresByProperty={scoresByProperty}
         />
       </main>
     </div>

@@ -12,6 +12,7 @@ import {
 } from "./actions";
 import { ResolutionForm } from "./ResolutionForm";
 import { useAnalytics } from "@/lib/useAnalytics";
+import { type ComplianceScoreResult } from "@/lib/compliance-score";
 
 const DATA_PREVIEW_BASE =
   "https://data.cityofchicago.org/Buildings/Building-Violations/22u3-xenr/data_preview";
@@ -106,6 +107,7 @@ export function PropertyDetailClient({
   citySlug = "chicago",
   propertyDetails = null,
   resolutions = [],
+  complianceScore = null,
 }: {
   propertyId: string;
   violations: ViolationRow[];
@@ -126,6 +128,7 @@ export function PropertyDetailClient({
     fix_date: string | null;
     affected_areas: string[] | null;
   }>;
+  complianceScore?: ComplianceScoreResult | null;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -984,7 +987,35 @@ export function PropertyDetailClient({
           Most recent:{" "}
           {mostRecentDate ? new Date(mostRecentDate).toLocaleDateString() : "—"}
         </span>
+        {complianceScore && (
+          <span className={`ml-auto flex items-center gap-1.5 text-sm font-bold ${complianceScore.gradeColor}`}>
+            <span className="rounded-lg bg-zinc-100 px-2.5 py-1 dark:bg-zinc-800">
+              {complianceScore.grade}
+            </span>
+            <span className="text-zinc-500 dark:text-zinc-400 font-normal text-xs">
+              Score: {complianceScore.score}/100
+            </span>
+          </span>
+        )}
       </div>
+
+      {complianceScore && complianceScore.factors.length > 0 && (
+        <details className="mt-2 rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <summary className="cursor-pointer px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200">
+            Score breakdown
+          </summary>
+          <div className="px-4 pb-3 pt-1 space-y-1">
+            {complianceScore.factors.map((f, i) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <span className="text-zinc-600 dark:text-zinc-400">{f.label}: {f.detail}</span>
+                <span className={`font-medium ${f.impact > 0 ? "text-emerald-500" : f.impact < 0 ? "text-red-400" : "text-zinc-400"}`}>
+                  {f.impact > 0 ? `+${f.impact}` : f.impact === 0 ? "—" : f.impact}
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
