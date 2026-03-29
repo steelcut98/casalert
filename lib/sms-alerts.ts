@@ -19,7 +19,7 @@ export async function sendNewViolationSMS(
     }
 
     const client = twilio(accountSid, authToken);
-    const body = `CasAlert: ${newViolationsCount} new violation(s) at ${propertyAddress}. ${complaintCount} are COMPLAINT type. View: https://casalert.vercel.app/dashboard/${propertyId}`;
+    const body = `CasAlerts: ${newViolationsCount} new violation(s) at ${propertyAddress}. ${complaintCount} are COMPLAINT type. View: https://casalerts.com/dashboard/${propertyId}`;
 
     await client.messages.create({
       to: phoneNumber,
@@ -61,7 +61,7 @@ export async function sendReminderSMS(
     }
 
     const client = twilio(accountSid, authToken);
-    const body = `CasAlert Reminder: ${violationDescription} at ${propertyAddress}. Deadline: ${deadlineDate} (${daysRemaining} days left).`;
+    const body = `CasAlerts Reminder: ${violationDescription} at ${propertyAddress}. Deadline: ${deadlineDate} (${daysRemaining} days left).`;
 
     await client.messages.create({
       to: phoneNumber,

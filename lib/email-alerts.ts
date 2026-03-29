@@ -40,7 +40,7 @@ function emailShell({
   <div style="margin:0;padding:0;background:#f5f5f5;">
     <div style="max-width:720px;margin:0 auto;padding:24px 16px;">
       <div style="background:#1a1a1a;color:#ffffff;border-radius:10px 10px 0 0;padding:14px 16px;">
-        <span style="font-weight:700;font-size:16px;letter-spacing:0.2px;">CasAlert</span>
+        <span style="font-weight:700;font-size:16px;letter-spacing:0.2px;">CasAlerts</span>
       </div>
       <div style="background:#ffffff;border-radius:0 0 10px 10px;padding:18px 16px;border:1px solid #e0e0e0;border-top:none;">
         <div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;">
@@ -49,9 +49,9 @@ function emailShell({
           )}</div>
           ${bodyHtml}
           <div style="margin-top:20px;color:#6b6b6b;font-size:12px;line-height:1.4;">
-            <div>Data sourced from public municipal records. CasAlert is not a legal service. Always verify directly with your city Department of Buildings.</div>
+            <div>Data sourced from public municipal records. CasAlerts is not a legal service. Always verify directly with your city Department of Buildings.</div>
             <div style="margin-top:6px;">
-              Manage alert preferences: <a style="color:#6b6b6b;" href="https://casalert.vercel.app/settings">https://casalert.vercel.app/settings</a>
+              Manage alert preferences: <a style="color:#6b6b6b;" href="https://casalerts.com/settings">https://casalerts.com/settings</a>
             </div>
           </div>
         </div>
@@ -115,7 +115,7 @@ export async function sendNewViolationEmail(
         </tbody>
       </table>
       <div style="margin-top:16px;">
-        <a href="https://casalert.vercel.app/dashboard/${encodeURIComponent(
+        <a href="https://casalerts.com/dashboard/${encodeURIComponent(
           propertyId
         )}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;font-size:13px;">
           View property details
@@ -129,7 +129,7 @@ export async function sendNewViolationEmail(
     });
 
     const { data, error } = await resend.emails.send({
-      from: "CasAlert <alerts@casalerts.com>",
+      from: "CasAlerts <alerts@casalerts.com>",
       to: userEmail,
       subject: `New violations detected at ${propertyAddress}`,
       html,
@@ -192,7 +192,7 @@ export async function sendReminderEmail(
         </div>
       </div>
       <div style="margin-top:10px;">
-        <a href="https://casalert.vercel.app/dashboard/${encodeURIComponent(
+        <a href="https://casalerts.com/dashboard/${encodeURIComponent(
           propertyId
         )}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;font-size:13px;">
           View property details
@@ -208,7 +208,7 @@ export async function sendReminderEmail(
     });
 
     const { data, error } = await resend.emails.send({
-      from: "CasAlert <alerts@casalerts.com>",
+      from: "CasAlerts <alerts@casalerts.com>",
       to: userEmail,
       subject,
       html,
