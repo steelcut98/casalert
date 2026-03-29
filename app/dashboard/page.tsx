@@ -57,6 +57,52 @@ export default async function DashboardPage() {
     }
   }
 
+  let totalPendingVerification = 0;
+  if (properties && properties.length > 0) {
+    const { data: pendingViolations } = await supabase
+      .from("violations")
+      .select("id")
+      .in("property_id", properties.map((p) => p.id))
+      .eq("user_resolution_status", "pending_verification");
+    totalPendingVerification = pendingViolations?.length ?? 0;
+  }
+
+  let totalResolved = 0;
+  let totalSpendMin = 0;
+  let totalSpendMax = 0;
+  if (properties && properties.length > 0) {
+    const { data: resolutions } = await supabase
+      .from("violation_resolutions")
+      .select("cost_range, exact_cost")
+      .in("property_id", properties.map((p) => p.id));
+    totalResolved = resolutions?.length ?? 0;
+
+    const costRangeToMinMax: Record<string, [number, number]> = {
+      "$0": [0, 0],
+      "$1-$100": [1, 100],
+      "$100-$250": [100, 250],
+      "$250-$500": [250, 500],
+      "$500-$1,000": [500, 1000],
+      "$1,000-$2,500": [1000, 2500],
+      "$2,500-$5,000": [2500, 5000],
+      "$5,000-$10,000": [5000, 10000],
+      "$10,000+": [10000, 10000],
+    };
+    for (const r of resolutions ?? []) {
+      if (r.exact_cost != null) {
+        totalSpendMin += Number(r.exact_cost);
+        totalSpendMax += Number(r.exact_cost);
+      } else if (r.cost_range && costRangeToMinMax[r.cost_range]) {
+        const [min, max] = costRangeToMinMax[r.cost_range];
+        totalSpendMin += min;
+        totalSpendMax += max;
+      }
+    }
+  }
+
+  const totalOpenViolations = Object.values(violationsByProperty).reduce((sum, v) => sum + v.open, 0);
+  const totalComplaints = Object.values(violationsByProperty).reduce((sum, v) => sum + v.complaint, 0);
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -115,6 +161,15 @@ export default async function DashboardPage() {
           cityMap={cityMap}
           violationsByProperty={violationsByProperty}
           cities={cities}
+          portfolioStats={{
+            totalProperties: properties?.length ?? 0,
+            totalOpenViolations,
+            totalComplaints,
+            totalPendingVerification,
+            totalResolved,
+            totalSpendMin,
+            totalSpendMax,
+          }}
         />
       </main>
     </div>
