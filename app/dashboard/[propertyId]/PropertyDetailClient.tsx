@@ -1017,15 +1017,62 @@ export function PropertyDetailClient({
           <summary className="cursor-pointer px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200">
             Score breakdown
           </summary>
-          <div className="px-4 pb-3 pt-1 space-y-1">
-            {complianceScore.factors.map((f, i) => (
-              <div key={i} className="flex items-center justify-between text-xs">
-                <span className="text-zinc-600 dark:text-zinc-400">{f.label}: {f.detail}</span>
-                <span className={`font-medium ${f.impact > 0 ? "text-emerald-500" : f.impact < 0 ? "text-red-400" : "text-zinc-400"}`}>
-                  {f.impact > 0 ? `+${f.impact}` : f.impact === 0 ? "—" : f.impact}
+          <div className="px-4 pb-4 pt-2">
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">Compliance Score</span>
+                <span className={`text-lg font-bold ${complianceScore.gradeColor}`}>
+                  {complianceScore.grade} · {complianceScore.score}/100
                 </span>
               </div>
-            ))}
+              <div className="h-3 w-full rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    complianceScore.score >= 90 ? "bg-emerald-500" :
+                    complianceScore.score >= 80 ? "bg-emerald-400" :
+                    complianceScore.score >= 70 ? "bg-amber-400" :
+                    complianceScore.score >= 60 ? "bg-orange-400" :
+                    "bg-red-500"
+                  }`}
+                  style={{ width: `${complianceScore.score}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {complianceScore.factors.map((f, i) => (
+                <div key={i} className={`flex items-center justify-between rounded-lg px-3 py-2 ${
+                  f.impact < 0
+                    ? "bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30"
+                    : f.impact > 0
+                      ? "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30"
+                      : "bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-700/50"
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm ${
+                      f.impact < 0 ? "text-red-500" : f.impact > 0 ? "text-emerald-500" : "text-zinc-400"
+                    }`}>
+                      {f.impact < 0 ? "▼" : f.impact > 0 ? "▲" : "—"}
+                    </span>
+                    <div>
+                      <p className={`text-xs font-medium ${
+                        f.impact < 0 ? "text-red-700 dark:text-red-300" :
+                        f.impact > 0 ? "text-emerald-700 dark:text-emerald-300" :
+                        "text-zinc-600 dark:text-zinc-300"
+                      }`}>{f.label}</p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">{f.detail}</p>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-bold ${
+                    f.impact < 0 ? "text-red-500 dark:text-red-400" :
+                    f.impact > 0 ? "text-emerald-500 dark:text-emerald-400" :
+                    "text-zinc-400"
+                  }`}>
+                    {f.impact > 0 ? `+${f.impact}` : f.impact === 0 ? "—" : String(f.impact)}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </details>
       )}
@@ -1035,47 +1082,65 @@ export function PropertyDetailClient({
           <summary className="cursor-pointer px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200">
             Risk briefing
           </summary>
-          <div className="px-4 pb-3 pt-1 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500">Risk level:</span>
-              <span className={`rounded px-2 py-0.5 text-xs font-bold ${
-                riskBriefing.riskLevel === "critical" ? "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300" :
-                riskBriefing.riskLevel === "high" ? "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300" :
-                riskBriefing.riskLevel === "moderate" ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300" :
-                "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
+          <div className="px-4 pb-4 pt-2 space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={`rounded-lg px-3 py-1 text-sm font-bold ${
+                riskBriefing.riskLevel === "critical" ? "bg-red-500 text-white" :
+                riskBriefing.riskLevel === "high" ? "bg-orange-500 text-white" :
+                riskBriefing.riskLevel === "moderate" ? "bg-amber-500 text-white" :
+                "bg-emerald-500 text-white"
               }`}>
-                {riskBriefing.riskLevel.charAt(0).toUpperCase() + riskBriefing.riskLevel.slice(1)}
+                {riskBriefing.riskLevel.charAt(0).toUpperCase() + riskBriefing.riskLevel.slice(1)} Risk
               </span>
+              {riskBriefing.severityBreakdown.length > 0 && (
+                <div className="flex items-center gap-3">
+                  {riskBriefing.severityBreakdown.map((s) => (
+                    <div key={s.severity} className="flex items-center gap-1">
+                      <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white ${
+                        s.severity === "Critical" ? "bg-red-500" :
+                        s.severity === "High" ? "bg-orange-500" :
+                        s.severity === "Moderate" ? "bg-amber-500" :
+                        s.severity === "Low" ? "bg-zinc-400" :
+                        "bg-zinc-300"
+                      }`}>{s.count}</span>
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.severity}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {riskBriefing.severityBreakdown.length > 0 && (
-              <div className="flex flex-wrap gap-3">
-                {riskBriefing.severityBreakdown.map((s) => (
-                  <div key={s.severity} className="flex items-center gap-1.5">
-                    <span className={`text-sm font-bold ${s.color}`}>{s.count}</span>
-                    <span className="text-xs text-zinc-500">{s.severity}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <p className="text-xs text-zinc-600 dark:text-zinc-400">{riskBriefing.summaryText}</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">{riskBriefing.summaryText}</p>
 
             {riskBriefing.keyRisks.length > 0 && (
-              <div className="rounded border border-red-200 bg-red-50 p-2 dark:border-red-900/50 dark:bg-red-950/20">
-                <p className="text-xs font-medium text-red-800 dark:text-red-300 mb-1">Key risks:</p>
-                {riskBriefing.keyRisks.map((risk, i) => (
-                  <p key={i} className="text-xs text-red-700 dark:text-red-400">• {risk}</p>
-                ))}
+              <div className="rounded-lg border border-red-200 dark:border-red-900/40 overflow-hidden">
+                <div className="bg-red-50 dark:bg-red-950/30 px-3 py-2">
+                  <p className="text-xs font-bold text-red-800 dark:text-red-300">⚠ Key Risks</p>
+                </div>
+                <div className="px-3 py-2 space-y-2 bg-white dark:bg-zinc-900/50">
+                  {riskBriefing.keyRisks.map((risk, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                      <p className="text-xs text-red-700 dark:text-red-400 leading-relaxed">{risk}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
             {riskBriefing.actionItems.length > 0 && (
-              <div className="space-y-0.5">
-                <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Recommended:</p>
-                {riskBriefing.actionItems.map((item, i) => (
-                  <p key={i} className="text-xs text-zinc-500 dark:text-zinc-400">→ {item}</p>
-                ))}
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+                <div className="bg-zinc-50 dark:bg-zinc-800 px-3 py-2">
+                  <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Recommended Actions</p>
+                </div>
+                <div className="px-3 py-2 space-y-2 bg-white dark:bg-zinc-900/50">
+                  {riskBriefing.actionItems.map((item, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="mt-0.5 text-emerald-500 text-xs font-bold shrink-0">→</span>
+                      <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">{item}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
