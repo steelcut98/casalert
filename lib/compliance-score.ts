@@ -98,8 +98,8 @@ export function getViolationSeverity(description?: string | null, code?: string 
 
 function severityPenalty(severity: string): number {
   switch (severity) {
-    case "critical": return 6;
-    case "high": return 4;
+    case "critical": return 8;
+    case "high": return 5;
     case "moderate": return 3;
     case "low": return 1;
     case "administrative": return 1;
@@ -112,9 +112,9 @@ function agePenalty(violationDate?: string | null): number {
   const filed = new Date(violationDate).getTime();
   if (isNaN(filed)) return 0;
   const daysOpen = (Date.now() - filed) / (1000 * 60 * 60 * 24);
-  if (daysOpen > 365) return 3;
-  if (daysOpen > 180) return 2;
-  if (daysOpen > 90) return 1;
+  if (daysOpen > 365) return 5;
+  if (daysOpen > 180) return 3;
+  if (daysOpen > 90) return 2;
   return 0;
 }
 
@@ -160,7 +160,7 @@ export function calculateComplianceScore(params: {
     }
   }
 
-  const violationPenalty = Math.min(totalSeverityPenalty, 45);
+  const violationPenalty = Math.min(totalSeverityPenalty, 55);
   if (violationPenalty > 0) {
     const parts: string[] = [];
     if (criticalCount > 0) parts.push(`${criticalCount} critical`);
@@ -176,7 +176,7 @@ export function calculateComplianceScore(params: {
     });
   }
 
-  const agePenaltyTotal = Math.min(totalAgePenalty, 15);
+  const agePenaltyTotal = Math.min(totalAgePenalty, 25);
   if (agePenaltyTotal > 0) {
     score -= agePenaltyTotal;
     factors.push({
@@ -187,7 +187,7 @@ export function calculateComplianceScore(params: {
   }
 
   if (params.resolvedCount > 0) {
-    const bonus = Math.min(params.resolvedCount * 5, 20);
+    const bonus = Math.min(params.resolvedCount * 3, 12);
     score += bonus;
     factors.push({
       label: "Resolved violations",
@@ -197,7 +197,7 @@ export function calculateComplianceScore(params: {
   }
 
   if (params.pendingVerificationCount > 0) {
-    const bonus = Math.min(params.pendingVerificationCount * 2, 6);
+    const bonus = Math.min(params.pendingVerificationCount * 1, 3);
     score += bonus;
     factors.push({
       label: "Pending verification",
@@ -217,7 +217,7 @@ export function calculateComplianceScore(params: {
   }
 
   if (params.fastResolutions > 0) {
-    const bonus = Math.min(params.fastResolutions * 3, 15);
+    const bonus = Math.min(params.fastResolutions * 2, 10);
     score += bonus;
     factors.push({
       label: "Fast resolutions",
