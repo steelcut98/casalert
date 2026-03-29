@@ -20,6 +20,8 @@ export function DashboardContent({
   violationsByProperty,
   cities,
   portfolioStats,
+  newViolationsByProperty = {},
+  overdueByProperty = {},
 }: {
   properties: Property[];
   cityMap: Map<string, City>;
@@ -28,6 +30,8 @@ export function DashboardContent({
     { open: number; complaint: number; byCategory: Record<string, number> }
   >;
   cities: City[];
+  newViolationsByProperty?: Record<string, number>;
+  overdueByProperty?: Record<string, number>;
   portfolioStats?: {
     totalProperties: number;
     totalOpenViolations: number;
@@ -131,6 +135,8 @@ export function DashboardContent({
         properties={filteredAndSorted}
         cityMap={cityMap}
         violationsByProperty={violationsByProperty}
+        newViolationsByProperty={newViolationsByProperty}
+        overdueByProperty={overdueByProperty}
       />
     </>
   );

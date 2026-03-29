@@ -19,6 +19,8 @@ export function DashboardPropertyCards({
   properties,
   cityMap,
   violationsByProperty,
+  newViolationsByProperty = {},
+  overdueByProperty = {},
 }: {
   properties: Property[];
   cityMap: Map<string, City>;
@@ -26,6 +28,8 @@ export function DashboardPropertyCards({
     string,
     { open: number; complaint: number; byCategory: Record<string, number> }
   >;
+  newViolationsByProperty?: Record<string, number>;
+  overdueByProperty?: Record<string, number>;
 }) {
   const router = useRouter();
   const [deleteModalProperty, setDeleteModalProperty] = useState<Property | null>(null);
@@ -96,6 +100,31 @@ export function DashboardPropertyCards({
                 {prop.address}
               </p>
             )}
+            {(() => {
+              const newCount = newViolationsByProperty[prop.id] ?? 0;
+              const overdueCount = overdueByProperty[prop.id] ?? 0;
+              if (newCount === 0 && overdueCount === 0) return null;
+              return (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {newCount > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-950/50 dark:text-blue-300">
+                      <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                        <circle cx="10" cy="10" r="5" />
+                      </svg>
+                      {newCount} new since last visit
+                    </span>
+                  )}
+                  {overdueCount > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-950/50 dark:text-red-300">
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      {overdueCount} overdue deadline{overdueCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${statusColor}`}
@@ -110,41 +139,44 @@ export function DashboardPropertyCards({
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               {(() => {
-                const scannedAt = prop.last_scanned_at
-                  ? new Date(prop.last_scanned_at).getTime()
-                  : null;
-                const now = Date.now();
-                const hoursAgo = scannedAt
-                  ? (now - scannedAt) / (1000 * 60 * 60)
-                  : Infinity;
-                const freshness =
-                  hoursAgo <= 1
-                    ? "up-to-date"
-                    : hoursAgo <= 6
-                      ? "recent"
-                      : "pending";
+                const newCount = newViolationsByProperty[prop.id] ?? 0;
+                const overdueCount = overdueByProperty[prop.id] ?? 0;
+                const scannedAt = prop.last_scanned_at ? new Date(prop.last_scanned_at).getTime() : null;
+                const hoursAgo = scannedAt ? (Date.now() - scannedAt) / (1000 * 60 * 60) : Infinity;
+
+                let statusBadge: React.ReactNode;
+                if (newCount > 0) {
+                  statusBadge = (
+                    <span className="inline-flex rounded px-1.5 py-0.5 font-medium bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200">
+                      {newCount} new since last visit
+                    </span>
+                  );
+                } else if (overdueCount > 0) {
+                  statusBadge = (
+                    <span className="inline-flex rounded px-1.5 py-0.5 font-medium bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-200">
+                      {overdueCount} overdue
+                    </span>
+                  );
+                } else if (hoursAgo <= 6) {
+                  statusBadge = (
+                    <span className="inline-flex rounded px-1.5 py-0.5 font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                      All up to date
+                    </span>
+                  );
+                } else {
+                  statusBadge = (
+                    <span className="inline-flex rounded px-1.5 py-0.5 font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">
+                      Pending scan
+                    </span>
+                  );
+                }
+
                 return (
                   <>
-                    <span
-                      className={`inline-flex rounded px-1.5 py-0.5 font-medium ${
-                        freshness === "up-to-date"
-                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
-                          : freshness === "recent"
-                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
-                            : "bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400"
-                      }`}
-                    >
-                      {freshness === "up-to-date"
-                        ? "Up to date"
-                        : freshness === "recent"
-                          ? "Recent"
-                          : "Pending scan"}
-                    </span>
+                    {statusBadge}
                     <span className="text-zinc-500 dark:text-zinc-500">
                       Last scanned:{" "}
-                      {prop.last_scanned_at
-                        ? new Date(prop.last_scanned_at).toLocaleString()
-                        : "Never"}
+                      {prop.last_scanned_at ? new Date(prop.last_scanned_at).toLocaleString() : "Never"}
                     </span>
                   </>
                 );

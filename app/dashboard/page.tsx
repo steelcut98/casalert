@@ -103,6 +103,56 @@ export default async function DashboardPage() {
   const totalOpenViolations = Object.values(violationsByProperty).reduce((sum, v) => sum + v.open, 0);
   const totalComplaints = Object.values(violationsByProperty).reduce((sum, v) => sum + v.complaint, 0);
 
+  const { data: previousVisits } = await supabase
+    .from("analytics_events")
+    .select("created_at")
+    .eq("user_id", user.id)
+    .eq("event_type", "page_view")
+    .eq("page_path", "/dashboard")
+    .order("created_at", { ascending: false })
+    .limit(2);
+
+  const previousVisitTime = previousVisits && previousVisits.length >= 2
+    ? previousVisits[1].created_at
+    : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  let newViolationsByProperty: Record<string, number> = {};
+  if (properties && properties.length > 0) {
+    const { data: newViolations } = await supabase
+      .from("violations")
+      .select("property_id")
+      .in("property_id", properties.map((p) => p.id))
+      .gt("first_seen_at", previousVisitTime);
+
+    for (const p of properties) {
+      const count = (newViolations ?? []).filter((v) => v.property_id === p.id).length;
+      newViolationsByProperty[p.id] = count;
+    }
+  }
+
+  let overdueByProperty: Record<string, number> = {};
+  if (properties && properties.length > 0) {
+    const { data: overdueReminders } = await supabase
+      .from("violation_reminders")
+      .select("violation_id")
+      .eq("is_active", true)
+      .lt("deadline_date", new Date().toISOString().split("T")[0]);
+
+    if (overdueReminders && overdueReminders.length > 0) {
+      const overdueViolationIds = overdueReminders.map((r) => r.violation_id);
+      const { data: overdueViolations } = await supabase
+        .from("violations")
+        .select("id, property_id")
+        .in("id", overdueViolationIds)
+        .in("property_id", properties.map((p) => p.id));
+
+      for (const p of properties) {
+        const count = (overdueViolations ?? []).filter((v) => v.property_id === p.id).length;
+        overdueByProperty[p.id] = count;
+      }
+    }
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -170,6 +220,8 @@ export default async function DashboardPage() {
             totalSpendMin,
             totalSpendMax,
           }}
+          newViolationsByProperty={newViolationsByProperty}
+          overdueByProperty={overdueByProperty}
         />
       </main>
     </div>
