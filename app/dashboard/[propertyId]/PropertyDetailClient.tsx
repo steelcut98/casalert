@@ -13,6 +13,7 @@ import {
 import { ResolutionForm } from "./ResolutionForm";
 import { useAnalytics } from "@/lib/useAnalytics";
 import { type ComplianceScoreResult } from "@/lib/compliance-score";
+import { generateRiskBriefing } from "@/lib/risk-briefing";
 
 const DATA_PREVIEW_BASE =
   "https://data.cityofchicago.org/Buildings/Building-Violations/22u3-xenr/data_preview";
@@ -209,6 +210,18 @@ export function PropertyDetailClient({
     }
     return map;
   }, [resolutions]);
+
+  const riskBriefing = useMemo(() => {
+    return generateRiskBriefing(
+      violations.map((v) => ({
+        violation_description: v.violation_description,
+        violation_code: v.violation_code,
+        violation_status: v.violation_status,
+        violation_date: v.violation_date,
+        inspection_category: v.inspection_category,
+      }))
+    );
+  }, [violations]);
 
   const allOpenHaveReminders =
     openViolations.length > 0 &&
@@ -1013,6 +1026,58 @@ export function PropertyDetailClient({
                 </span>
               </div>
             ))}
+          </div>
+        </details>
+      )}
+
+      {riskBriefing && (riskBriefing.keyRisks.length > 0 || riskBriefing.severityBreakdown.length > 0) && (
+        <details className="mt-2 rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <summary className="cursor-pointer px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200">
+            Risk briefing
+          </summary>
+          <div className="px-4 pb-3 pt-1 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500">Risk level:</span>
+              <span className={`rounded px-2 py-0.5 text-xs font-bold ${
+                riskBriefing.riskLevel === "critical" ? "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300" :
+                riskBriefing.riskLevel === "high" ? "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300" :
+                riskBriefing.riskLevel === "moderate" ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300" :
+                "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
+              }`}>
+                {riskBriefing.riskLevel.charAt(0).toUpperCase() + riskBriefing.riskLevel.slice(1)}
+              </span>
+            </div>
+
+            {riskBriefing.severityBreakdown.length > 0 && (
+              <div className="flex flex-wrap gap-3">
+                {riskBriefing.severityBreakdown.map((s) => (
+                  <div key={s.severity} className="flex items-center gap-1.5">
+                    <span className={`text-sm font-bold ${s.color}`}>{s.count}</span>
+                    <span className="text-xs text-zinc-500">{s.severity}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs text-zinc-600 dark:text-zinc-400">{riskBriefing.summaryText}</p>
+
+            {riskBriefing.keyRisks.length > 0 && (
+              <div className="rounded border border-red-200 bg-red-50 p-2 dark:border-red-900/50 dark:bg-red-950/20">
+                <p className="text-xs font-medium text-red-800 dark:text-red-300 mb-1">Key risks:</p>
+                {riskBriefing.keyRisks.map((risk, i) => (
+                  <p key={i} className="text-xs text-red-700 dark:text-red-400">• {risk}</p>
+                ))}
+              </div>
+            )}
+
+            {riskBriefing.actionItems.length > 0 && (
+              <div className="space-y-0.5">
+                <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Recommended:</p>
+                {riskBriefing.actionItems.map((item, i) => (
+                  <p key={i} className="text-xs text-zinc-500 dark:text-zinc-400">→ {item}</p>
+                ))}
+              </div>
+            )}
           </div>
         </details>
       )}

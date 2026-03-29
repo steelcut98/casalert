@@ -5,6 +5,7 @@ import { addPropertyWithBaselineScan, type OnboardingResult } from "./actions";
 import { InspectionCategoryBadge } from "@/components/InspectionCategoryBadge";
 import { PropertyQuestionnaire } from "@/components/onboarding/PropertyQuestionnaire";
 import { propertyLimitLabel } from "@/lib/plans";
+import { generateRiskBriefing } from "@/lib/risk-briefing";
 import Link from "next/link";
 
 type PlanTier = "free" | "starter" | "pro";
@@ -252,6 +253,69 @@ export function OnboardingForm({
               </p>
             </div>
           </div>
+
+          {(() => {
+            const briefing = generateRiskBriefing(
+              result.violations.map((v) => ({
+                violation_description: v.violation_description,
+                violation_code: v.violation_code,
+                violation_status: v.violation_status,
+                violation_date: v.violation_date,
+                inspection_category: v.inspection_category,
+              }))
+            );
+
+            return (
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Risk level:</span>
+                  <span className={`rounded-lg px-2.5 py-0.5 text-sm font-bold ${
+                    briefing.riskLevel === "critical" ? "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300" :
+                    briefing.riskLevel === "high" ? "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300" :
+                    briefing.riskLevel === "moderate" ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300" :
+                    "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
+                  }`}>
+                    {briefing.riskLevel.charAt(0).toUpperCase() + briefing.riskLevel.slice(1)}
+                  </span>
+                </div>
+
+                <p className="text-sm text-zinc-700 dark:text-zinc-300">{briefing.summaryText}</p>
+
+                {briefing.severityBreakdown.length > 0 && (
+                  <div className="flex flex-wrap gap-3">
+                    {briefing.severityBreakdown.map((s) => (
+                      <div key={s.severity} className="flex items-center gap-1.5">
+                        <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.severity}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {briefing.keyRisks.length > 0 && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/50 dark:bg-red-950/20">
+                    <p className="text-xs font-medium text-red-800 dark:text-red-300 mb-1.5">Key risks identified:</p>
+                    <div className="space-y-1">
+                      {briefing.keyRisks.map((risk, i) => (
+                        <p key={i} className="text-xs text-red-700 dark:text-red-400">• {risk}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {briefing.actionItems.length > 0 && (
+                  <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800/50">
+                    <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Recommended actions:</p>
+                    <div className="space-y-1">
+                      {briefing.actionItems.map((item, i) => (
+                        <p key={i} className="text-xs text-zinc-600 dark:text-zinc-400">→ {item}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {result.propertyDetails &&
             (() => {
