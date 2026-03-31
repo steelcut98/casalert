@@ -129,6 +129,7 @@ export async function POST(request: Request) {
         payload.garage_spaces = details.garage_spaces ?? null;
         payload.quality_grade = details.quality_grade ?? null;
         payload.zoning = details.zoning ?? null;
+        if (details.parcel_id) payload.parcel_id = details.parcel_id;
 
         const keys = Object.keys(payload);
         if (keys.length <= 2) {
@@ -144,6 +145,16 @@ export async function POST(request: Request) {
           failed++;
           continue;
         }
+        if (details.zip_code || details.latitude || details.longitude) {
+          const geoUpdate: Record<string, unknown> = {};
+          if (details.zip_code) geoUpdate.zip_code = details.zip_code;
+          if (details.latitude) geoUpdate.latitude = details.latitude;
+          if (details.longitude) geoUpdate.longitude = details.longitude;
+          if (Object.keys(geoUpdate).length > 0) {
+            await admin.from("properties").update(geoUpdate).eq("id", property.id);
+          }
+        }
+
         enriched++;
       } catch (error) {
         console.error("[Re-enrich] Error for property:", property.address, error);

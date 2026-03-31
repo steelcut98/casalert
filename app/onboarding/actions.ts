@@ -14,6 +14,7 @@ import { canAddProperty, type PlanTier } from "@/lib/plans";
 import { revalidatePath } from "next/cache";
 import { logComplianceEvent, logComplianceEventBatch } from "@/lib/compliance-events";
 import { logAnalyticsEvent } from "@/lib/analytics-events";
+import { getViolationSeverity } from "@/lib/compliance-score";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -225,6 +226,7 @@ export async function addPropertyWithBaselineScan(
     needs_alert: false,
     first_seen_at: new Date().toISOString(),
     source_dataset: citySlug === "philadelphia" ? "philadelphia" : "building",
+    severity_classification: getViolationSeverity(row.violation_description ?? null, row.violation_code ?? null),
   }));
 
   if (violationsToInsert.length > 0) {
@@ -310,6 +312,7 @@ export async function addPropertyWithBaselineScan(
           garage_spaces: enrichment.garage_spaces ?? null,
           quality_grade: enrichment.quality_grade ?? null,
           zoning: enrichment.zoning ?? null,
+          parcel_id: enrichment.parcel_id ?? null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "property_id" }
@@ -318,6 +321,16 @@ export async function addPropertyWithBaselineScan(
         console.error("[onboarding] enrichment upsert error:", enrichUpsertErr.message);
       }
       if (!enrichUpsertErr) {
+        if (enrichment.zip_code || enrichment.latitude || enrichment.longitude) {
+          const geoUpdate: Record<string, unknown> = {};
+          if (enrichment.zip_code) geoUpdate.zip_code = enrichment.zip_code;
+          if (enrichment.latitude) geoUpdate.latitude = enrichment.latitude;
+          if (enrichment.longitude) geoUpdate.longitude = enrichment.longitude;
+          if (Object.keys(geoUpdate).length > 0) {
+            await admin.from("properties").update(geoUpdate).eq("id", newProperty.id);
+          }
+        }
+
         await logComplianceEvent({
           propertyId: newProperty.id,
           userId: user.id,

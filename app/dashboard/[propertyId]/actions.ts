@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
 import { fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 import { logComplianceEvent, logComplianceEventBatch } from "@/lib/compliance-events";
+import { getViolationSeverity } from "@/lib/compliance-score";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -243,6 +244,7 @@ export async function rescanPropertyViolations(
     user_resolution_status: resolutionStatusMap.get(row.id)?.user_resolution_status ?? "open",
     user_resolved_at: resolutionStatusMap.get(row.id)?.user_resolved_at ?? null,
     verification_deadline: resolutionStatusMap.get(row.id)?.verification_deadline ?? null,
+    severity_classification: getViolationSeverity(row.violation_description ?? null, row.violation_code ?? null),
   }));
 
   if (toInsert.length > 0) {
@@ -320,10 +322,17 @@ export async function submitResolution(data: {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
 
+  const { data: violationForExternalId } = await supabase
+    .from("violations")
+    .select("external_id")
+    .eq("id", data.violationId)
+    .single();
+
   const { error: insertErr } = await supabase
     .from("violation_resolutions")
     .insert({
       violation_id: data.violationId,
+      violation_external_id: violationForExternalId?.external_id ?? null,
       property_id: data.propertyId,
       user_id: user.id,
       resolution_method: data.resolutionMethod,

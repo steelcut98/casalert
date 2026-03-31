@@ -23,6 +23,10 @@ export type PropertyEnrichment = {
   garage_spaces?: number | null;
   quality_grade?: string | null;
   zoning?: string | null;
+  zip_code?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  parcel_id?: string | null;
 };
 
 function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
@@ -152,6 +156,10 @@ export async function getChicagoPropertyDetails(address: string): Promise<Proper
       market_value: null,
       sale_price: null,
       sale_date: null,
+      zip_code: null,
+      latitude: safeNumber(row.centroid_y),
+      longitude: safeNumber(row.centroid_x),
+      parcel_id: safeString(row.pin),
     };
   } catch (error) {
     console.error("[Chicago Enrich] Error:", error);
@@ -210,7 +218,7 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
   const raw = address.toUpperCase().trim();
   if (!raw) return null;
 
-  const SELECT_COLS = "year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_price, sale_date, building_code_description, central_air, garage_spaces, quality_grade, zoning";
+  const SELECT_COLS = "year_built, category_code_description, number_of_bedrooms, number_of_bathrooms, number_stories, total_livable_area, market_value, exterior_condition, interior_condition, sale_price, sale_date, building_code_description, central_air, garage_spaces, quality_grade, zoning, zip_code";
 
   async function queryOPA(sql: string): Promise<Record<string, unknown>[]> {
     const url = `${PHILLY_CARTO_URL}?q=${encodeURIComponent(sql)}`;
@@ -277,6 +285,10 @@ export async function getPhiladelphiaPropertyDetails(address: string): Promise<P
       garage_spaces: safeNumber(row.garage_spaces),
       quality_grade: safeString(row.quality_grade),
       zoning: safeString(row.zoning),
+      zip_code: safeString(row.zip_code),
+      latitude: null,
+      longitude: null,
+      parcel_id: null,
     };
   } catch {
     return null;

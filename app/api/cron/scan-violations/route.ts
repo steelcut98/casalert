@@ -5,6 +5,7 @@ import { fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-viola
 import { sendNewViolationEmail, sendReminderEmail } from "@/lib/email-alerts";
 import { sendNewViolationSMS, sendReminderSMS } from "@/lib/sms-alerts";
 import { logComplianceEvent, logComplianceEventBatch } from "@/lib/compliance-events";
+import { getViolationSeverity, calculateComplianceScore } from "@/lib/compliance-score";
 
 const APP_TOKEN = process.env.SOCRATA_APP_TOKEN ?? undefined;
 
@@ -162,6 +163,7 @@ export async function GET(request: Request) {
         needs_alert: boolean;
         first_seen_at: string;
         source_dataset: string;
+        severity_classification: string;
       }> = [];
       for (const row of rows) {
         if (!existingIds.has(row.id)) {
@@ -189,6 +191,7 @@ export async function GET(request: Request) {
             needs_alert: true,
             first_seen_at: new Date().toISOString(),
             source_dataset: citySlug === "philadelphia" ? "philadelphia" : "building",
+            severity_classification: getViolationSeverity(row.violation_description ?? null, row.violation_code ?? null),
           });
           existingIds.add(row.id);
         }
@@ -545,6 +548,71 @@ export async function GET(request: Request) {
     }
   } catch (err) {
     console.error("[cron/scan-violations] reminder phase error", err);
+  }
+
+  // --------------------------------------------------------------------------
+  // Score snapshot phase: save daily compliance score for each property
+  // --------------------------------------------------------------------------
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    for (const prop of properties ?? []) {
+      try {
+        const { data: snapshotViolations } = await supabase
+          .from("violations")
+          .select("violation_description, violation_code, violation_status, violation_date, inspection_category, user_resolution_status")
+          .eq("property_id", prop.id);
+
+        const { data: snapshotResolutions } = await supabase
+          .from("violation_resolutions")
+          .select("is_recurring, deadline_met, fix_date, created_at")
+          .eq("property_id", prop.id);
+
+        const { data: snapshotOverdue } = await supabase
+          .from("violation_reminders")
+          .select("violation_id")
+          .eq("is_active", true)
+          .lt("deadline_date", today);
+
+        let fastRes = 0;
+        for (const r of snapshotResolutions ?? []) {
+          if (r.fix_date && r.created_at) {
+            const diff = (new Date(r.fix_date).getTime() - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24);
+            if (diff <= 14) fastRes++;
+          }
+        }
+
+        const scoreResult = calculateComplianceScore({
+          violations: (snapshotViolations ?? []).map(v => ({
+            violation_description: v.violation_description,
+            violation_code: v.violation_code,
+            violation_status: v.violation_status,
+            violation_date: v.violation_date,
+            inspection_category: v.inspection_category,
+            user_resolution_status: v.user_resolution_status,
+          })),
+          resolvedCount: (snapshotResolutions ?? []).length,
+          pendingVerificationCount: (snapshotViolations ?? []).filter(v => v.user_resolution_status === "pending_verification").length,
+          overdueDeadlines: (snapshotOverdue ?? []).length,
+          fastResolutions: fastRes,
+          recurringIssues: (snapshotResolutions ?? []).filter(r => r.is_recurring === "Ongoing problem").length,
+          deadlinesMet: (snapshotResolutions ?? []).filter(r => r.deadline_met === true).length,
+          deadlinesMissed: (snapshotResolutions ?? []).filter(r => r.deadline_met === false).length,
+        });
+
+        await supabase.from("compliance_score_history").upsert({
+          property_id: prop.id,
+          user_id: prop.user_id,
+          score: scoreResult.score,
+          grade: scoreResult.grade,
+          factors: scoreResult.factors,
+          snapshot_date: today,
+        }, { onConflict: "property_id,snapshot_date" });
+      } catch (snapErr) {
+        console.error("[cron] score snapshot error for property", prop.id, snapErr);
+      }
+    }
+  } catch (err) {
+    console.error("[cron/scan-violations] score snapshot phase error", err);
   }
 
   console.log("[cron/scan-violations] done", {
