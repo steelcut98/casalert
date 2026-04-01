@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { logComplianceEvent } from "@/lib/compliance-events";
+import { logAnalyticsEvent } from "@/lib/analytics-events";
 
 export async function removeProperty(propertyId: string): Promise<{ error?: string }> {
   const userClient = await createClient();
@@ -18,6 +20,22 @@ export async function removeProperty(propertyId: string): Promise<{ error?: stri
     .eq("user_id", user.id)
     .single();
   if (!property) return { error: "Property not found" };
+
+  await logComplianceEvent({
+    propertyId,
+    userId: user.id,
+    eventType: "property_removed",
+    eventData: {
+      description: `Property removed: ${property.address}`,
+    },
+  });
+
+  await logAnalyticsEvent({
+    userId: user.id,
+    eventType: "button_click",
+    propertyId,
+    eventData: { action: "remove_property", address: property.address },
+  });
 
   const admin = createAdminClient();
 

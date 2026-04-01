@@ -84,6 +84,18 @@ export async function setViolationReminder(
   );
 
   if (error) return { error: error.message };
+
+  await logComplianceEvent({
+    propertyId,
+    userId: user.id,
+    eventType: "reminder_set",
+    violationId: violationId,
+    eventData: {
+      reminder_date: deadlineDateStr,
+      description: `Reminder set: ${reminderFrequency} for deadline ${deadlineDateStr}`,
+    },
+  });
+
   revalidatePath(`/dashboard/${propertyId}`);
   return {};
 }
@@ -105,6 +117,17 @@ export async function clearViolationReminder(
     .eq("user_id", user.id);
 
   if (error) return { error: error.message };
+
+  await logComplianceEvent({
+    propertyId,
+    userId: user.id,
+    eventType: "reminder_dismissed",
+    violationId: violationId,
+    eventData: {
+      description: "Reminder cleared by user",
+    },
+  });
+
   revalidatePath(`/dashboard/${propertyId}`);
   return {};
 }
@@ -143,6 +166,16 @@ export async function setBulkViolationReminders(
     );
     if (error) return { error: error.message };
   }
+
+  await logComplianceEvent({
+    propertyId,
+    userId: user.id,
+    eventType: "reminder_set",
+    eventData: {
+      reminder_date: deadlineDateStr,
+      description: `Bulk reminder set for ${violationIds.length} violations: ${reminderFrequency}`,
+    },
+  });
 
   revalidatePath(`/dashboard/${propertyId}`);
   return {};
