@@ -139,9 +139,12 @@ export async function GET(request: Request) {
 
       const { data: existing } = await supabase
         .from("violations")
-        .select("external_id")
+        .select("id, external_id, violation_status")
         .eq("property_id", prop.id);
       const existingIds = new Set((existing ?? []).map((r) => r.external_id));
+      const existingStatusMap = new Map(
+        (existing ?? []).map((r) => [r.external_id, { id: r.id, status: r.violation_status }])
+      );
 
       const toInsert: Array<{
         property_id: string;
@@ -194,6 +197,40 @@ export async function GET(request: Request) {
             severity_classification: getViolationSeverity(row.violation_description ?? null, row.violation_code ?? null),
           });
           existingIds.add(row.id);
+        }
+      }
+
+      // Detect status changes on existing violations
+      let statusChangesCount = 0;
+      for (const row of rows) {
+        const prev = existingStatusMap.get(row.id);
+        if (prev && prev.status !== (row.violation_status ?? null)) {
+          statusChangesCount++;
+          await supabase
+            .from("violations")
+            .update({
+              violation_status: row.violation_status ?? null,
+              violation_status_date: row.violation_status_date
+                ? new Date(row.violation_status_date).toISOString()
+                : null,
+            })
+            .eq("id", prev.id);
+
+          if (prop.user_id) {
+            await logComplianceEvent({
+              propertyId: prop.id,
+              userId: prop.user_id,
+              eventType: "violation_status_changed",
+              violationId: prev.id,
+              eventData: {
+                old_status: prev.status ?? "unknown",
+                new_status: row.violation_status ?? "unknown",
+                violation_code: row.violation_code ?? undefined,
+                violation_description: row.violation_description ?? undefined,
+                description: `Status changed from ${prev.status ?? "unknown"} to ${row.violation_status ?? "unknown"}`,
+              },
+            });
+          }
         }
       }
 
@@ -254,8 +291,8 @@ export async function GET(request: Request) {
           eventData: {
             violations_found: rows.length,
             new_violations: toInsert.length,
-            status_changes: 0,
-            description: `Scan complete: ${toInsert.length} new, 0 changes`,
+            status_changes: statusChangesCount,
+            description: `Scan complete: ${toInsert.length} new, ${statusChangesCount} status changes`,
           },
         });
       }
