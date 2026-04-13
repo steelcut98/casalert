@@ -15,6 +15,13 @@ export default async function DashboardPage() {
     redirect("/login?redirectTo=/dashboard");
   }
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", user.id)
+    .single();
+  const userPlan = profile?.plan ?? "free";
+
   const { data: properties } = await supabase
     .from("properties")
     .select("id, address, nickname, city_id, last_scanned_at, property_group")
@@ -346,6 +353,7 @@ export default async function DashboardPage() {
           overdueByProperty={overdueByProperty}
           resolutionsByProperty={resolutionsByProperty}
           scoresByProperty={scoresByProperty}
+          userPlan={userPlan}
         />
       </main>
     </div>

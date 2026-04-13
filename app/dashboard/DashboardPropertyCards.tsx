@@ -22,6 +22,7 @@ export function DashboardPropertyCards({
   newViolationsByProperty = {},
   overdueByProperty = {},
   scoresByProperty = {},
+  userPlan = "free",
 }: {
   properties: Property[];
   cityMap: Map<string, City>;
@@ -32,6 +33,7 @@ export function DashboardPropertyCards({
   newViolationsByProperty?: Record<string, number>;
   overdueByProperty?: Record<string, number>;
   scoresByProperty?: Record<string, { score: number; grade: string; gradeColor: string }>;
+  userPlan?: string;
 }) {
   const router = useRouter();
   const [deleteModalProperty, setDeleteModalProperty] = useState<Property | null>(null);
@@ -96,8 +98,13 @@ export function DashboardPropertyCards({
               <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">
                 {city?.name ?? "—"}
               </span>
-              {scoresByProperty[prop.id] && (
+              {scoresByProperty[prop.id] && userPlan !== "free" && (
                 <span className={`ml-auto rounded-lg px-2 py-0.5 text-sm font-bold ${scoresByProperty[prop.id].gradeColor} bg-zinc-100 dark:bg-zinc-800`}>
+                  {scoresByProperty[prop.id].grade} · {scoresByProperty[prop.id].score}
+                </span>
+              )}
+              {scoresByProperty[prop.id] && userPlan === "free" && (
+                <span className="ml-auto rounded-lg px-2 py-0.5 text-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 blur-[3px] select-none" aria-hidden>
                   {scoresByProperty[prop.id].grade} · {scoresByProperty[prop.id].score}
                 </span>
               )}

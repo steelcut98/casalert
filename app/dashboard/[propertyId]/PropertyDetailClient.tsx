@@ -109,6 +109,7 @@ export function PropertyDetailClient({
   propertyDetails = null,
   resolutions = [],
   complianceScore = null,
+  userPlan = "free",
 }: {
   propertyId: string;
   violations: ViolationRow[];
@@ -130,6 +131,7 @@ export function PropertyDetailClient({
     affected_areas: string[] | null;
   }>;
   complianceScore?: ComplianceScoreResult | null;
+  userPlan?: string;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -199,10 +201,26 @@ export function PropertyDetailClient({
     () => violations.filter(v => isOpen(v) && v.user_resolution_status !== "pending_verification"),
     [violations]
   );
-  const historicalViolations = useMemo(
+  const isFreeUser = userPlan === "free";
+  const allHistoricalViolations = useMemo(
     () => violations.filter((v) => !isOpen(v)),
     [violations]
   );
+  const sixMonthsAgo = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 6);
+    return d;
+  }, []);
+  const historicalViolations = useMemo(
+    () =>
+      isFreeUser
+        ? allHistoricalViolations.filter(
+            (v) => v.violation_date && new Date(v.violation_date) >= sixMonthsAgo
+          )
+        : allHistoricalViolations,
+    [allHistoricalViolations, isFreeUser, sixMonthsAgo]
+  );
+  const lockedHistoricalCount = allHistoricalViolations.length - historicalViolations.length;
   const resolutionByViolation = useMemo(() => {
     const map = new Map<string, (typeof resolutions)[number]>();
     for (const r of resolutions) {
@@ -1000,7 +1018,7 @@ export function PropertyDetailClient({
           Most recent:{" "}
           {mostRecentDate ? new Date(mostRecentDate).toLocaleDateString() : "—"}
         </span>
-        {complianceScore && (
+        {complianceScore && !isFreeUser && (
           <span className={`ml-auto flex items-center gap-1.5 text-sm font-bold ${complianceScore.gradeColor}`}>
             <span className="rounded-lg bg-zinc-100 px-2.5 py-1 dark:bg-zinc-800">
               {complianceScore.grade}
@@ -1010,9 +1028,19 @@ export function PropertyDetailClient({
             </span>
           </span>
         )}
+        {complianceScore && isFreeUser && (
+          <span className="ml-auto flex items-center gap-1.5 text-sm">
+            <span className="rounded-lg bg-zinc-100 px-2.5 py-1 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-600 blur-[3px] select-none" aria-hidden>
+              {complianceScore.grade}
+            </span>
+            <a href="/pricing" className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+              Upgrade to unlock
+            </a>
+          </span>
+        )}
       </div>
 
-      {complianceScore && complianceScore.factors.length > 0 && (
+      {complianceScore && complianceScore.factors.length > 0 && !isFreeUser && (
         <details className="mt-2 rounded-lg border border-zinc-200 dark:border-zinc-800">
           <summary className="cursor-pointer px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200">
             Score breakdown
@@ -1077,7 +1105,27 @@ export function PropertyDetailClient({
         </details>
       )}
 
-      {riskBriefing && (riskBriefing.keyRisks.length > 0 || riskBriefing.severityBreakdown.length > 0) && (
+      {complianceScore && isFreeUser && (
+        <div className="mt-2 relative rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+          <div className="px-4 py-6 text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-3">
+              <svg className="w-6 h-6 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Compliance Score & Breakdown</p>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">See your severity-weighted compliance score with detailed factor analysis</p>
+            <a
+              href="/pricing"
+              className="mt-3 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              Upgrade to Starter
+            </a>
+          </div>
+        </div>
+      )}
+
+      {riskBriefing && (riskBriefing.keyRisks.length > 0 || riskBriefing.severityBreakdown.length > 0) && !isFreeUser && (
         <details className="mt-2 rounded-lg border border-zinc-200 dark:border-zinc-800">
           <summary className="cursor-pointer px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200">
             Risk briefing
@@ -1145,6 +1193,26 @@ export function PropertyDetailClient({
             )}
           </div>
         </details>
+      )}
+
+      {riskBriefing && (riskBriefing.keyRisks.length > 0 || riskBriefing.severityBreakdown.length > 0) && isFreeUser && (
+        <div className="mt-2 relative rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+          <div className="px-4 py-6 text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-3">
+              <svg className="w-6 h-6 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Risk Briefing</p>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Get severity analysis, key risks identified, and recommended actions</p>
+            <a
+              href="/pricing"
+              className="mt-3 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              Upgrade to Starter
+            </a>
+          </div>
+        </div>
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1346,7 +1414,23 @@ export function PropertyDetailClient({
         <section>
           <h2 className="mb-2 text-lg font-medium text-zinc-700 dark:text-zinc-300">
             Historical / closed violations ({historicalViolations.length})
+            {isFreeUser && lockedHistoricalCount > 0 && (
+              <span className="ml-2 text-sm font-normal text-zinc-400">
+                · {lockedHistoricalCount} older violations hidden
+              </span>
+            )}
           </h2>
+          {isFreeUser && lockedHistoricalCount > 0 && (
+            <div className="mb-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                {lockedHistoricalCount} violation{lockedHistoricalCount !== 1 ? "s" : ""} older than 6 months hidden.{" "}
+                <a href="/pricing" className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+                  Upgrade to Starter
+                </a>{" "}
+                to view full violation history.
+              </p>
+            </div>
+          )}
           <div className="space-y-1 rounded-lg border border-zinc-200 dark:border-zinc-800">
             {filteredHistorical.length === 0 ? (
               <div className="rounded-lg bg-white px-4 py-6 text-center text-sm text-zinc-500 dark:bg-zinc-900 dark:text-zinc-500">

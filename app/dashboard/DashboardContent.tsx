@@ -24,6 +24,7 @@ export function DashboardContent({
   overdueByProperty = {},
   resolutionsByProperty = {},
   scoresByProperty = {},
+  userPlan = "free",
 }: {
   properties: Property[];
   cityMap: Map<string, City>;
@@ -36,6 +37,7 @@ export function DashboardContent({
   overdueByProperty?: Record<string, number>;
   resolutionsByProperty?: Record<string, { resolved: number; pendingVerification: number; spendMin: number; spendMax: number }>;
   scoresByProperty?: Record<string, { score: number; grade: string; gradeColor: string }>;
+  userPlan?: string;
   portfolioStats?: {
     totalProperties: number;
     totalOpenViolations: number;
@@ -186,6 +188,7 @@ export function DashboardContent({
         newViolationsByProperty={newViolationsByProperty}
         overdueByProperty={overdueByProperty}
         scoresByProperty={scoresByProperty}
+        userPlan={userPlan}
       />
     </>
   );

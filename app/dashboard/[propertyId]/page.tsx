@@ -274,6 +274,7 @@ export default async function PropertyDetailPage({
           propertyDetails={propertyDetails}
           resolutions={resolutions ?? []}
           complianceScore={complianceScore}
+          userPlan={profile?.plan ?? "free"}
         />
       </main>
     </div>
