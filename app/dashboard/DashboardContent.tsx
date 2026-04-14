@@ -196,11 +196,11 @@ export function DashboardContent({
             </svg>
             <div>
               <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                Your {userPlan === "free" ? "Free" : userPlan === "starter" ? "Starter" : "current"} plan includes {planPropertyLimit} {planPropertyLimit === 1 ? "property" : "properties"}
+                {properties.length - planPropertyLimit} of your {properties.length} {properties.length === 1 ? "property is" : "properties are"} not being monitored
               </p>
               <p className="mt-1 text-sm text-amber-700 dark:text-amber-300/80">
-                You have {properties.length} {properties.length === 1 ? "property" : "properties"}. {properties.length - planPropertyLimit} {properties.length - planPropertyLimit === 1 ? "is" : "are"} locked and won&apos;t receive alerts. Remove locked properties or{" "}
-                <a href="/pricing" className="font-medium underline hover:text-amber-900 dark:hover:text-amber-100">upgrade your plan</a>.
+                Locked properties don&apos;t receive violation alerts, compliance scores, or risk briefings. New violations could go unnoticed.{" "}
+                <a href="/pricing" className="font-medium underline hover:text-amber-900 dark:hover:text-amber-100">Upgrade to monitor all your properties →</a>
               </p>
             </div>
           </div>
