@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { removeProperty } from "./actions";
+import { removeProperty, pinProperty } from "./actions";
 
 type Property = {
   id: string;
@@ -23,6 +23,7 @@ export function DashboardPropertyCards({
   overdueByProperty = {},
   scoresByProperty = {},
   userPlan = "free",
+  activePropertyIds = [],
 }: {
   properties: Property[];
   cityMap: Map<string, City>;
@@ -34,10 +35,17 @@ export function DashboardPropertyCards({
   overdueByProperty?: Record<string, number>;
   scoresByProperty?: Record<string, { score: number; grade: string; gradeColor: string }>;
   userPlan?: string;
+  activePropertyIds?: string[];
 }) {
   const router = useRouter();
   const [deleteModalProperty, setDeleteModalProperty] = useState<Property | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [pinning, setPinning] = useState<string | null>(null);
+
+  const activeSet = new Set(activePropertyIds);
+  const hasLocking = activePropertyIds.length > 0 && properties.length > activePropertyIds.length;
+  const activeProperties = hasLocking ? properties.filter(p => activeSet.has(p.id)) : properties;
+  const lockedProperties = hasLocking ? properties.filter(p => !activeSet.has(p.id)) : [];
 
   if (properties.length === 0) {
     return (
@@ -58,7 +66,7 @@ export function DashboardPropertyCards({
 
   return (
     <div className="mt-8 grid gap-4 sm:grid-cols-2">
-      {properties.map((prop) => {
+      {activeProperties.map((prop) => {
         const city = cityMap.get(prop.city_id);
         const stats = violationsByProperty[prop.id] ?? {
           open: 0,
@@ -99,13 +107,16 @@ export function DashboardPropertyCards({
                 {city?.name ?? "—"}
               </span>
               {scoresByProperty[prop.id] && userPlan !== "free" && (
-                <span className={`ml-auto rounded-lg px-2 py-0.5 text-sm font-bold ${scoresByProperty[prop.id].gradeColor} bg-zinc-100 dark:bg-zinc-800`}>
+                <span className={`ml-auto mr-7 rounded-lg px-2 py-0.5 text-sm font-bold ${scoresByProperty[prop.id].gradeColor} bg-zinc-100 dark:bg-zinc-800`}>
                   {scoresByProperty[prop.id].grade} · {scoresByProperty[prop.id].score}
                 </span>
               )}
               {scoresByProperty[prop.id] && userPlan === "free" && (
-                <span className="ml-auto rounded-lg px-2 py-0.5 text-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 blur-[3px] select-none" aria-hidden>
-                  {scoresByProperty[prop.id].grade} · {scoresByProperty[prop.id].score}
+                <span className="ml-auto mr-7 inline-flex items-center gap-1 rounded-lg bg-zinc-100 px-2 py-0.5 text-xs text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  Score
                 </span>
               )}
             </div>
@@ -216,6 +227,78 @@ export function DashboardPropertyCards({
           </div>
         );
       })}
+
+      {lockedProperties.length > 0 && (
+        <>
+          <div className="col-span-full mt-2 flex items-center gap-2">
+            <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+            <span className="text-xs font-medium text-zinc-400 dark:text-zinc-500">Locked properties</span>
+            <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+          </div>
+          {lockedProperties.map((prop) => {
+            const city = cityMap.get(prop.city_id);
+            const isPinning = pinning === prop.id;
+            return (
+              <div
+                key={prop.id}
+                className="relative rounded-xl border border-zinc-200/60 bg-zinc-50 p-5 dark:border-zinc-800/60 dark:bg-zinc-900/30"
+              >
+                <div className="absolute right-2 top-2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeleteModalProperty(prop);
+                    }}
+                    className="rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
+                    aria-label="Remove property"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pr-10">
+                  <p className="font-medium text-zinc-400 dark:text-zinc-500">
+                    {prop.nickname ?? prop.address}
+                  </p>
+                  <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-400 dark:bg-zinc-700/50 dark:text-zinc-500">
+                    {city?.name ?? "—"}
+                  </span>
+                  <span className="ml-auto inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Locked
+                  </span>
+                </div>
+                {prop.nickname && (
+                  <p className="mt-0.5 text-sm text-zinc-400 dark:text-zinc-600">{prop.address}</p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={isPinning}
+                    onClick={async () => {
+                      setPinning(prop.id);
+                      const result = await pinProperty(prop.id);
+                      setPinning(null);
+                      if (!result.error) router.refresh();
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800 disabled:opacity-50"
+                  >
+                    {isPinning ? "Switching…" : "Make active"}
+                  </button>
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                    or <a href="/pricing" className="text-blue-500 hover:text-blue-600 dark:text-blue-400 hover:underline">upgrade plan</a>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
 
       {/* Delete confirmation modal */}
       {deleteModalProperty && (

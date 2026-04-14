@@ -68,3 +68,36 @@ export async function removeProperty(propertyId: string): Promise<{ error?: stri
   revalidatePath("/dashboard");
   return {};
 }
+
+export async function pinProperty(propertyId: string): Promise<{ error?: string }> {
+  const userClient = await createClient();
+  const {
+    data: { user },
+  } = await userClient.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const { data: property } = await userClient
+    .from("properties")
+    .select("id, address")
+    .eq("id", propertyId)
+    .eq("user_id", user.id)
+    .single();
+  if (!property) return { error: "Property not found" };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("properties")
+    .update({ pinned_at: new Date().toISOString() })
+    .eq("id", propertyId);
+  if (error) return { error: error.message };
+
+  await logAnalyticsEvent({
+    userId: user.id,
+    eventType: "button_click",
+    propertyId,
+    eventData: { action: "pin_property", address: property.address },
+  });
+
+  revalidatePath("/dashboard");
+  return {};
+}

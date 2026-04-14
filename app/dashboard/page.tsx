@@ -26,6 +26,7 @@ export default async function DashboardPage() {
     .from("properties")
     .select("id, address, nickname, city_id, last_scanned_at, property_group")
     .eq("user_id", user.id)
+    .order("pinned_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
 
   const cityIds = [...new Set((properties ?? []).map((p) => p.city_id))];
@@ -337,6 +338,10 @@ export default async function DashboardPage() {
 
         <DashboardContent
           properties={properties ?? []}
+          planPropertyLimit={(() => {
+            const limits: Record<string, number> = { free: 1, starter: 5, pro: 999 };
+            return limits[userPlan] ?? 1;
+          })()}
           cityMap={cityMap}
           violationsByProperty={violationsByProperty}
           cities={cities}
@@ -354,6 +359,10 @@ export default async function DashboardPage() {
           resolutionsByProperty={resolutionsByProperty}
           scoresByProperty={scoresByProperty}
           userPlan={userPlan}
+          activePropertyIds={(properties ?? []).slice(0, (() => {
+            const limits: Record<string, number> = { free: 1, starter: 5, pro: 999 };
+            return limits[userPlan] ?? 1;
+          })()).map(p => p.id)}
         />
       </main>
     </div>

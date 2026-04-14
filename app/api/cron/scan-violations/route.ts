@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 
   const { data: properties, error: propError } = await supabase
     .from("properties")
-    .select("id, city_id, address, normalized_address, property_group, user_id");
+    .select("id, city_id, address, normalized_address, property_group, user_id, created_at, pinned_at");
   if (propError) {
     console.error("[cron/scan-violations] properties fetch", propError);
     return NextResponse.json(
@@ -68,7 +68,40 @@ export async function GET(request: Request) {
     (cities ?? []).map((c) => [c.id, c.slug])
   );
 
+  // Build active property set — skip locked properties (over plan limit)
+  const PLAN_LIMITS: Record<string, number> = { free: 1, starter: 5, pro: 999 };
+  const { data: allProfiles } = await supabase.from("profiles").select("id, plan");
+  const userPlanMap = new Map((allProfiles ?? []).map((p) => [p.id, p.plan ?? "free"]));
+
+  const propertiesByUser = new Map<string, typeof properties>();
   for (const prop of properties ?? []) {
+    const list = propertiesByUser.get(prop.user_id) ?? [];
+    list.push(prop);
+    propertiesByUser.set(prop.user_id, list);
+  }
+
+  const activePropertyIds = new Set<string>();
+  for (const [userId, userProps] of propertiesByUser) {
+    const limit = PLAN_LIMITS[userPlanMap.get(userId) ?? "free"] ?? 1;
+    const sorted = [...userProps].sort((a, b) => {
+      const aPinned = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+      const bPinned = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bCreated - aCreated;
+    });
+    for (let i = 0; i < Math.min(limit, sorted.length); i++) {
+      activePropertyIds.add(sorted[i].id);
+    }
+  }
+
+  let skippedLocked = 0;
+  for (const prop of properties ?? []) {
+    if (!activePropertyIds.has(prop.id)) {
+      skippedLocked++;
+      continue;
+    }
     const citySlug = cityIdToSlug.get(prop.city_id) ?? "";
     let rows: Array<{
       id: string;
@@ -332,6 +365,7 @@ export async function GET(request: Request) {
       ];
 
       for (const propertyId of propertyIds) {
+        if (!activePropertyIds.has(propertyId)) continue;
         const { data: property } = await supabase
           .from("properties")
           .select("id, address, user_id, city_id")
@@ -476,6 +510,7 @@ export async function GET(request: Request) {
           .eq("id", violation.property_id)
           .single();
         if (!property) continue;
+        if (!activePropertyIds.has(property.id)) continue;
 
         const { data: profile } = await supabase
           .from("profiles")
@@ -593,6 +628,7 @@ export async function GET(request: Request) {
   try {
     const today = new Date().toISOString().split("T")[0];
     for (const prop of properties ?? []) {
+      if (!activePropertyIds.has(prop.id)) continue;
       try {
         const { data: snapshotViolations } = await supabase
           .from("violations")
@@ -654,12 +690,14 @@ export async function GET(request: Request) {
 
   console.log("[cron/scan-violations] done", {
     properties: properties?.length ?? 0,
+    skippedLocked,
     totalNewViolations: totalNew,
     logs: logs.length,
   });
   return NextResponse.json({
     ok: true,
-    propertiesScanned: properties?.length ?? 0,
+    propertiesScanned: (properties?.length ?? 0) - skippedLocked,
+    skippedLocked,
     newViolationsInserted: totalNew,
     logs,
   });

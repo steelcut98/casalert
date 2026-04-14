@@ -45,6 +45,58 @@ export default async function PropertyDetailPage({
     .single();
   const canExportCsv = (profile?.plan ?? "free") !== "free";
 
+  // Check if this property is locked (user has more properties than plan allows)
+  const PLAN_PROPERTY_LIMITS: Record<string, number> = { free: 1, starter: 5, pro: 999 };
+  const currentPlan = profile?.plan ?? "free";
+  const planLimit = PLAN_PROPERTY_LIMITS[currentPlan] ?? 1;
+
+  const { data: allUserProperties } = await supabase
+    .from("properties")
+    .select("id")
+    .eq("user_id", user.id)
+    .order("pinned_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+
+  const activeIds = (allUserProperties ?? []).slice(0, planLimit).map((p: { id: string }) => p.id);
+  const isPropertyLocked = (allUserProperties ?? []).length > planLimit && !activeIds.includes(propertyId);
+
+  if (isPropertyLocked) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+        <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+            <Link href="/dashboard" className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">CasAlerts</Link>
+            <div className="flex items-center gap-3">
+              <Link href="/dashboard" className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">← Dashboard</Link>
+              <ThemeToggle />
+            </div>
+          </div>
+        </header>
+        <main className="mx-auto max-w-5xl px-4 py-16 text-center">
+          <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
+            <svg className="h-8 w-8 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h1 className="mt-4 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">Property Locked</h1>
+          <p className="mt-2 text-lg text-zinc-600 dark:text-zinc-400">{property.address}</p>
+          <p className="mx-auto mt-4 max-w-md text-sm text-zinc-500 dark:text-zinc-500">
+            Your {currentPlan === "free" ? "Free" : "Starter"} plan includes {planLimit} {planLimit === 1 ? "property" : "properties"}.
+            Upgrade your plan or remove other properties from your dashboard to unlock this one.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link href="/pricing" className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200">
+              Upgrade plan
+            </Link>
+            <Link href="/dashboard" className="rounded-lg border border-zinc-300 px-5 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800">
+              Back to dashboard
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   const { data: propertyDetailsRow } = await supabase
     .from("property_details")
     .select("year_built, property_type, unit_count, square_footage, assessed_value, bedrooms, bathrooms, stories, exterior_condition, interior_condition, market_value, sale_price, sale_date, building_description, central_air, garage_spaces, quality_grade, zoning")

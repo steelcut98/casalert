@@ -25,6 +25,8 @@ export function DashboardContent({
   resolutionsByProperty = {},
   scoresByProperty = {},
   userPlan = "free",
+  planPropertyLimit = 999,
+  activePropertyIds = [],
 }: {
   properties: Property[];
   cityMap: Map<string, City>;
@@ -38,6 +40,8 @@ export function DashboardContent({
   resolutionsByProperty?: Record<string, { resolved: number; pendingVerification: number; spendMin: number; spendMax: number }>;
   scoresByProperty?: Record<string, { score: number; grade: string; gradeColor: string }>;
   userPlan?: string;
+  planPropertyLimit?: number;
+  activePropertyIds?: string[];
   portfolioStats?: {
     totalProperties: number;
     totalOpenViolations: number;
@@ -181,6 +185,24 @@ export function DashboardContent({
           </button>
         ))}
       </div>
+      {properties.length > planPropertyLimit && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/40 dark:bg-amber-950/20">
+          <div className="flex items-start gap-3">
+            <svg className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                Your {userPlan === "free" ? "Free" : userPlan === "starter" ? "Starter" : "current"} plan includes {planPropertyLimit} {planPropertyLimit === 1 ? "property" : "properties"}
+              </p>
+              <p className="mt-1 text-sm text-amber-700 dark:text-amber-300/80">
+                You have {properties.length} {properties.length === 1 ? "property" : "properties"}. {properties.length - planPropertyLimit} {properties.length - planPropertyLimit === 1 ? "is" : "are"} locked and won&apos;t receive alerts. Remove locked properties or{" "}
+                <a href="/pricing" className="font-medium underline hover:text-amber-900 dark:hover:text-amber-100">upgrade your plan</a>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <DashboardPropertyCards
         properties={filteredAndSorted}
         cityMap={cityMap}
@@ -189,6 +211,7 @@ export function DashboardContent({
         overdueByProperty={overdueByProperty}
         scoresByProperty={scoresByProperty}
         userPlan={userPlan}
+        activePropertyIds={activePropertyIds}
       />
     </>
   );
