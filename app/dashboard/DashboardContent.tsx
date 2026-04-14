@@ -71,10 +71,13 @@ export function DashboardContent({
   const filteredPortfolioStats = useMemo(() => {
     if (!portfolioStats) return null;
 
+    const activeSet = new Set(activePropertyIds);
+    const hasLocking = activePropertyIds.length > 0 && properties.length > activePropertyIds.length;
+    const baseProps = hasLocking ? properties.filter((p) => activeSet.has(p.id)) : properties;
     const cityId = cityFilter ? cities.find((c) => c.slug === cityFilter)?.id : null;
     const filteredProps = cityId
-      ? properties.filter((p) => p.city_id === cityId)
-      : properties;
+      ? baseProps.filter((p) => p.city_id === cityId)
+      : baseProps;
     const filteredPropertyIds = new Set(filteredProps.map((p) => p.id));
 
     let totalOpenViolations = 0;
@@ -108,7 +111,7 @@ export function DashboardContent({
       totalSpendMin,
       totalSpendMax,
     };
-  }, [cityFilter, cities, properties, violationsByProperty, resolutionsByProperty, portfolioStats]);
+  }, [cityFilter, cities, properties, violationsByProperty, resolutionsByProperty, portfolioStats, activePropertyIds]);
 
   return (
     <>
