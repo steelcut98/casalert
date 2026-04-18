@@ -580,10 +580,12 @@ export function OnboardingForm({
             </div>
           )}
 
-          <PropertyQuestionnaire
-            propertyId={result.propertyId}
-            showUserQuestions={showUserQuestions}
-          />
+          {quickDone && (
+            <PropertyQuestionnaire
+              propertyId={result.propertyId}
+              showUserQuestions={showUserQuestions}
+            />
+          )}
         </div>
       )}
     </>
