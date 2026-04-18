@@ -16,6 +16,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       propertyId,
+      unit_count,
+      ownership_role,
       property_type,
       management_type,
       property_management_company,
@@ -32,6 +34,8 @@ export async function POST(request: Request) {
       total_properties_owned,
     } = body as {
       propertyId?: string;
+      unit_count?: number | null;
+      ownership_role?: string | null;
       property_type?: string | null;
       management_type?: string | null;
       property_management_company?: string | null;
@@ -51,6 +55,8 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
 
     const hasPropertyData =
+      unit_count != null ||
+      ownership_role != null ||
       property_type != null ||
       management_type != null ||
       approximate_rent != null ||
@@ -65,6 +71,8 @@ export async function POST(request: Request) {
       const { error: detailErr } = await admin.from("property_details").upsert(
         {
           property_id: propertyId,
+          unit_count: unit_count != null ? Math.round(Number(unit_count)) : undefined,
+          ownership_role: ownership_role ?? null,
           property_type: property_type ?? null,
           management_type: management_type ?? null,
           approximate_rent: approximate_rent ?? null,

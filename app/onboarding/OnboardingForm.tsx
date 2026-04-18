@@ -29,6 +29,11 @@ export function OnboardingForm({
   const [addressSearchLoading, setAddressSearchLoading] = useState(false);
   const [addressSearchDone, setAddressSearchDone] = useState(false);
   const addressDropdownRef = useRef<HTMLDivElement>(null);
+  const [quickUnits, setQuickUnits] = useState<string | null>(null);
+  const [quickRole, setQuickRole] = useState<string | null>(null);
+  const [quickManagement, setQuickManagement] = useState<string | null>(null);
+  const [quickDone, setQuickDone] = useState(false);
+  const [quickSaving, setQuickSaving] = useState(false);
 
   useEffect(() => {
     if (address.length < 3) {
@@ -67,6 +72,27 @@ export function OnboardingForm({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  async function submitQuickQuestions(propertyId: string) {
+    setQuickSaving(true);
+    try {
+      const unitMap: Record<string, number> = { "1": 1, "2-4": 3, "5-10": 7, "11+": 15 };
+      await fetch("/api/questionnaire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId,
+          unit_count: quickUnits ? unitMap[quickUnits] ?? null : null,
+          ownership_role: quickRole,
+          management_type: quickManagement,
+        }),
+      });
+    } catch (err) {
+      console.error("Quick questions save error", err);
+    }
+    setQuickSaving(false);
+    setQuickDone(true);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!address.trim() || !canAddProperty) return;
@@ -79,6 +105,10 @@ export function OnboardingForm({
       setAddress("");
       setAddressSuggestions([]);
       setAddressSearchDone(false);
+      setQuickDone(false);
+      setQuickUnits(null);
+      setQuickRole(null);
+      setQuickManagement(null);
     }
   }
 
@@ -429,15 +459,127 @@ export function OnboardingForm({
             </div>
           </div>
 
-          <div className="mt-6 flex gap-3">
-            <button
-              type="button"
-              onClick={() => setResult(null)}
-              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Add another property
-            </button>
-          </div>
+          {!quickDone && (
+            <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-800/50">
+              <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                Quick questions
+              </h3>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                Help us tailor CasAlerts to your property — takes 10 seconds.
+              </p>
+
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How many units does this property have?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {["1", "2-4", "5-10", "11+"].map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setQuickUnits(opt)}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                          quickUnits === opt
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}
+                      >
+                        {opt} {opt === "1" ? "unit" : "units"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">What&apos;s your role?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[
+                      { value: "owner_occupant", label: "Owner-occupant" },
+                      { value: "landlord", label: "Landlord" },
+                      { value: "property_manager", label: "Property manager" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setQuickRole(opt.value)}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                          quickRole === opt.value
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How is it managed?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[
+                      { value: "self_managed", label: "Self-managed" },
+                      { value: "management_company", label: "Management company" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setQuickManagement(opt.value)}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                          quickManagement === opt.value
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={quickSaving}
+                  onClick={() => submitQuickQuestions(result!.propertyId)}
+                  className="rounded-lg bg-zinc-900 px-5 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                >
+                  {quickSaving ? "Saving…" : "Continue to dashboard"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickDone(true)}
+                  className="text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+                >
+                  Skip
+                </button>
+              </div>
+            </div>
+          )}
+
+          {quickDone && (
+            <div className="mt-6 flex gap-3">
+              <Link
+                href="/dashboard"
+                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              >
+                Go to dashboard
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setResult(null);
+                  setQuickDone(false);
+                  setQuickUnits(null);
+                  setQuickRole(null);
+                  setQuickManagement(null);
+                }}
+                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Add another property
+              </button>
+            </div>
+          )}
 
           <PropertyQuestionnaire
             propertyId={result.propertyId}
