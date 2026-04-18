@@ -34,6 +34,9 @@ export function OnboardingForm({
   const [quickRole, setQuickRole] = useState<string | null>(null);
   const [quickManagement, setQuickManagement] = useState<string | null>(null);
   const [quickSaving, setQuickSaving] = useState(false);
+  const [exactPropertyCount, setExactPropertyCount] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [companyWebsite, setCompanyWebsite] = useState("");
   const [optPropertyType, setOptPropertyType] = useState<string | null>(null);
   const [optOccupied, setOptOccupied] = useState<string | null>(null);
   const [optRent, setOptRent] = useState<string | null>(null);
@@ -86,9 +89,11 @@ export function OnboardingForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId,
-          total_properties_owned: quickProperties,
+          total_properties_owned: exactPropertyCount.trim() || quickProperties,
           ownership_role: quickRole,
           management_type: quickManagement,
+          property_management_company: companyName.trim() || null,
+          management_company_website: companyWebsite.trim() || null,
         }),
       });
     } catch (err) {
@@ -141,6 +146,9 @@ export function OnboardingForm({
       setOptRent(null);
       setOptAcquisition(null);
       setOptContractor(null);
+      setExactPropertyCount("");
+      setCompanyName("");
+      setCompanyWebsite("");
     }
   }
 
@@ -265,7 +273,8 @@ export function OnboardingForm({
       )}
 
       {result && result.success && (
-        <div className="mt-8 rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+        <div className="w-full max-w-lg my-8 rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden shadow-xl">
           <div className="flex items-center gap-0 border-b border-zinc-200 dark:border-zinc-800">
             {[1, 2, 3].map((s) => (
               <div key={s} className={`flex-1 py-2.5 text-center text-xs font-medium transition-colors ${
@@ -344,13 +353,6 @@ export function OnboardingForm({
                 >
                   Next
                 </button>
-                <button
-                  type="button"
-                  onClick={() => router.push(`/dashboard/${result.propertyId}`)}
-                  className="text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-                >
-                  Skip to property
-                </button>
               </div>
             </>
           )}
@@ -365,13 +367,21 @@ export function OnboardingForm({
                   <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How many properties do you own or manage?</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {["1", "2-4", "5-10", "11-50", "50+"].map((opt) => (
-                      <button key={opt} type="button" onClick={() => setQuickProperties(opt)}
+                      <button key={opt} type="button" onClick={() => { setQuickProperties(opt); setExactPropertyCount(""); }}
                         className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                          quickProperties === opt
+                          quickProperties === opt && !exactPropertyCount
                             ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                             : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                         }`}>{opt}</button>
                     ))}
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Exact #"
+                      value={exactPropertyCount}
+                      onChange={(e) => { setExactPropertyCount(e.target.value); setQuickProperties(null); }}
+                      className="w-24 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
+                    />
                   </div>
                 </div>
                 <div>
@@ -386,6 +396,16 @@ export function OnboardingForm({
                         }`}>{opt.label}</button>
                     ))}
                   </div>
+                  {quickRole === "property_manager" && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <input type="text" placeholder="Company name (optional)" value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        className="flex-1 min-w-[140px] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500" />
+                      <input type="url" placeholder="Website (optional)" value={companyWebsite}
+                        onChange={(e) => setCompanyWebsite(e.target.value)}
+                        className="flex-1 min-w-[140px] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500" />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How is it managed?</p>
@@ -399,6 +419,16 @@ export function OnboardingForm({
                         }`}>{opt.label}</button>
                     ))}
                   </div>
+                  {quickManagement === "management_company" && quickRole !== "property_manager" && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <input type="text" placeholder="Company name (optional)" value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        className="flex-1 min-w-[140px] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500" />
+                      <input type="url" placeholder="Website (optional)" value={companyWebsite}
+                        onChange={(e) => setCompanyWebsite(e.target.value)}
+                        className="flex-1 min-w-[140px] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500" />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -408,8 +438,6 @@ export function OnboardingForm({
                   className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200">
                   {quickSaving ? "Saving…" : "Continue"}
                 </button>
-                <button type="button" onClick={() => setOnboardingStep(3)}
-                  className="text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300">Skip</button>
               </div>
             </>
           )}
@@ -417,7 +445,7 @@ export function OnboardingForm({
           {onboardingStep === 3 && (
             <>
               <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">A few more details</h3>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Optional — helps us provide better insights. You can always update these later.</p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Optional — helps us provide better insights.</p>
 
               <div className="mt-4 space-y-4">
                 <div>
@@ -473,7 +501,7 @@ export function OnboardingForm({
                   </div>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Do you have a preferred contractor?</p>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Do you have preferred contractors or handymen?</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {[{value:"yes",label:"Yes"},{value:"no",label:"No"}].map((opt) => (
                       <button key={opt.value} type="button" onClick={() => setOptContractor(opt.value)}
@@ -500,6 +528,7 @@ export function OnboardingForm({
             </>
           )}
           </div>
+        </div>
         </div>
       )}
     </>

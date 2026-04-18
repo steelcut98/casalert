@@ -21,6 +21,7 @@ export async function POST(request: Request) {
       property_type,
       management_type,
       property_management_company,
+      management_company_website,
       approximate_rent,
       occupied_status,
       acquisition_year,
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
       property_type?: string | null;
       management_type?: string | null;
       property_management_company?: string | null;
+      management_company_website?: string | null;
       approximate_rent?: string | null;
       occupied_status?: string | null;
       acquisition_year?: number | null;
@@ -93,12 +95,13 @@ export async function POST(request: Request) {
       }
     }
 
-    if (biggest_concerns != null || referral_source != null || total_properties_owned != null || property_management_company != null) {
+    if (biggest_concerns != null || referral_source != null || total_properties_owned != null || property_management_company != null || management_company_website != null) {
       const updates: Record<string, unknown> = {};
       if (biggest_concerns !== undefined) updates.biggest_concerns = biggest_concerns;
       if (referral_source !== undefined) updates.referral_source = referral_source;
       if (total_properties_owned !== undefined) updates.total_properties_owned = total_properties_owned;
       if (property_management_company !== undefined) updates.property_management_company = property_management_company;
+      if (management_company_website !== undefined) updates.management_company_website = management_company_website;
 
       if (Object.keys(updates).length > 0) {
         const { error: profileErr } = await admin
