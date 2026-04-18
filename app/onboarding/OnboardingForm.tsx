@@ -41,7 +41,6 @@ export function OnboardingForm({
   const [optOccupied, setOptOccupied] = useState<string | null>(null);
   const [optRent, setOptRent] = useState<string | null>(null);
   const [optAcquisition, setOptAcquisition] = useState<string | null>(null);
-  const [optContractor, setOptContractor] = useState<string | null>(null);
   const [optSaving, setOptSaving] = useState(false);
 
   useEffect(() => {
@@ -115,7 +114,6 @@ export function OnboardingForm({
           occupied_status: optOccupied,
           approximate_rent: optRent,
           acquisition_method: optAcquisition,
-          has_preferred_contractor: optContractor === "yes" ? true : optContractor === "no" ? false : null,
         }),
       });
     } catch (err) {
@@ -145,7 +143,6 @@ export function OnboardingForm({
       setOptOccupied(null);
       setOptRent(null);
       setOptAcquisition(null);
-      setOptContractor(null);
       setExactPropertyCount("");
       setCompanyName("");
       setCompanyWebsite("");
@@ -497,19 +494,6 @@ export function OnboardingForm({
                             ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                             : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                         }`}>{opt}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Do you have preferred contractors or handymen?</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {[{value:"yes",label:"Yes"},{value:"no",label:"No"}].map((opt) => (
-                      <button key={opt.value} type="button" onClick={() => setOptContractor(opt.value)}
-                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                          optContractor === opt.value
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                        }`}>{opt.label}</button>
                     ))}
                   </div>
                 </div>
