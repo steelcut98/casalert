@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import { addPropertyWithBaselineScan, type OnboardingResult } from "./actions";
-import { InspectionCategoryBadge } from "@/components/InspectionCategoryBadge";
-import { PropertyQuestionnaire } from "@/components/onboarding/PropertyQuestionnaire";
 import { propertyLimitLabel } from "@/lib/plans";
 import { generateRiskBriefing } from "@/lib/risk-briefing";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type PlanTier = "free" | "starter" | "pro";
 
@@ -14,7 +13,7 @@ export function OnboardingForm({
   canAddProperty,
   plan,
   currentCount,
-  showUserQuestions,
+  showUserQuestions: _showUserQuestions,
 }: {
   canAddProperty: boolean;
   plan: PlanTier;
@@ -29,11 +28,18 @@ export function OnboardingForm({
   const [addressSearchLoading, setAddressSearchLoading] = useState(false);
   const [addressSearchDone, setAddressSearchDone] = useState(false);
   const addressDropdownRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const [onboardingStep, setOnboardingStep] = useState(1);
   const [quickProperties, setQuickProperties] = useState<string | null>(null);
   const [quickRole, setQuickRole] = useState<string | null>(null);
   const [quickManagement, setQuickManagement] = useState<string | null>(null);
-  const [quickDone, setQuickDone] = useState(false);
   const [quickSaving, setQuickSaving] = useState(false);
+  const [optPropertyType, setOptPropertyType] = useState<string | null>(null);
+  const [optOccupied, setOptOccupied] = useState<string | null>(null);
+  const [optRent, setOptRent] = useState<string | null>(null);
+  const [optAcquisition, setOptAcquisition] = useState<string | null>(null);
+  const [optContractor, setOptContractor] = useState<string | null>(null);
+  const [optSaving, setOptSaving] = useState(false);
 
   useEffect(() => {
     if (address.length < 3) {
@@ -89,7 +95,29 @@ export function OnboardingForm({
       console.error("Quick questions save error", err);
     }
     setQuickSaving(false);
-    setQuickDone(true);
+    setOnboardingStep(3);
+  }
+
+  async function submitOptionalQuestions(propertyId: string) {
+    setOptSaving(true);
+    try {
+      await fetch("/api/questionnaire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId,
+          property_type: optPropertyType,
+          occupied_status: optOccupied,
+          approximate_rent: optRent,
+          acquisition_method: optAcquisition,
+          has_preferred_contractor: optContractor === "yes" ? true : optContractor === "no" ? false : null,
+        }),
+      });
+    } catch (err) {
+      console.error("Optional questions save error", err);
+    }
+    setOptSaving(false);
+    router.push(`/dashboard/${propertyId}`);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -104,10 +132,15 @@ export function OnboardingForm({
       setAddress("");
       setAddressSuggestions([]);
       setAddressSearchDone(false);
-      setQuickDone(false);
+      setOnboardingStep(1);
       setQuickProperties(null);
       setQuickRole(null);
       setQuickManagement(null);
+      setOptPropertyType(null);
+      setOptOccupied(null);
+      setOptRent(null);
+      setOptAcquisition(null);
+      setOptContractor(null);
     }
   }
 
@@ -232,360 +265,241 @@ export function OnboardingForm({
       )}
 
       {result && result.success && (
-        <div className="mt-8 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-            Property report
-          </h2>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            {result.address} · {result.cityName}
-            {result.propertyGroup && (
-              <span className="ml-2 text-zinc-500">
-                (property group: {result.propertyGroup})
-              </span>
-            )}
-          </p>
-          {result.warning && (
-            <p className="mt-2 text-sm text-amber-700 dark:text-amber-200">
-              {result.warning}
-            </p>
-          )}
-
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="rounded-lg bg-zinc-100 p-3 dark:bg-zinc-800">
-              <p className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-                {result.totalViolations}
-              </p>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                Total violations
-              </p>
-            </div>
-            <div className="rounded-lg bg-zinc-100 p-3 dark:bg-zinc-800">
-              <p className="text-2xl font-semibold text-red-700 dark:text-red-400">
-                {result.openCount}
-              </p>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400">Open</p>
-            </div>
-            <div className="rounded-lg bg-zinc-100 p-3 dark:bg-zinc-800">
-              <p className="text-2xl font-semibold text-zinc-700 dark:text-zinc-300">
-                {result.closedCount}
-              </p>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400">Closed</p>
-            </div>
-            <div className="rounded-lg bg-zinc-100 p-3 dark:bg-zinc-800">
-              <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                Most recent
-              </p>
-              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                {result.mostRecentDate
-                  ? new Date(result.mostRecentDate).toLocaleDateString()
-                  : "—"}
-              </p>
-            </div>
-          </div>
-
-          {(() => {
-            const briefing = generateRiskBriefing(
-              result.violations.map((v) => ({
-                violation_description: v.violation_description,
-                violation_code: v.violation_code,
-                violation_status: v.violation_status,
-                violation_date: v.violation_date,
-                inspection_category: v.inspection_category,
-              }))
-            );
-
-            return (
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Risk level:</span>
-                  <span className={`rounded-lg px-2.5 py-0.5 text-sm font-bold ${
-                    briefing.riskLevel === "critical" ? "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300" :
-                    briefing.riskLevel === "high" ? "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300" :
-                    briefing.riskLevel === "moderate" ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300" :
-                    "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
-                  }`}>
-                    {briefing.riskLevel.charAt(0).toUpperCase() + briefing.riskLevel.slice(1)}
-                  </span>
-                </div>
-
-                <p className="text-sm text-zinc-700 dark:text-zinc-300">{briefing.summaryText}</p>
-
-                {briefing.severityBreakdown.length > 0 && (
-                  <div className="flex flex-wrap gap-3">
-                    {briefing.severityBreakdown.map((s) => (
-                      <div key={s.severity} className="flex items-center gap-1.5">
-                        <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.severity}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {briefing.keyRisks.length > 0 && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/50 dark:bg-red-950/20">
-                    <p className="text-xs font-medium text-red-800 dark:text-red-300 mb-1.5">Key risks identified:</p>
-                    <div className="space-y-1">
-                      {briefing.keyRisks.map((risk, i) => (
-                        <p key={i} className="text-xs text-red-700 dark:text-red-400">• {risk}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {briefing.actionItems.length > 0 && (
-                  <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800/50">
-                    <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Recommended actions:</p>
-                    <div className="space-y-1">
-                      {briefing.actionItems.map((item, i) => (
-                        <p key={i} className="text-xs text-zinc-600 dark:text-zinc-400">→ {item}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
+        <div className="mt-8 rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
+          <div className="flex items-center gap-0 border-b border-zinc-200 dark:border-zinc-800">
+            {[1, 2, 3].map((s) => (
+              <div key={s} className={`flex-1 py-2.5 text-center text-xs font-medium transition-colors ${
+                s === onboardingStep
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : s < onboardingStep
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+                    : "bg-zinc-50 text-zinc-400 dark:bg-zinc-800/50 dark:text-zinc-500"
+              }`}>
+                {s < onboardingStep ? "✓ " : ""}{s === 1 ? "Summary" : s === 2 ? "Quick info" : "Details"}
               </div>
-            );
-          })()}
-
-          {result.propertyDetails &&
-            (() => {
-              const d = result.propertyDetails;
-              const hasYear = d.year_built != null && d.year_built !== 0;
-              const hasType = d.property_type != null && d.property_type !== "";
-              const hasUnits = d.units != null && d.units !== 0;
-              const hasSqft = d.square_footage != null && d.square_footage !== 0;
-              const hasAny = hasYear || hasType || hasUnits || hasSqft;
-              if (!hasAny) return null;
-              return (
-                <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    Property profile
-                  </p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                    {hasYear && (
-                      <span>
-                        <span className="text-zinc-500">Year built:</span>{" "}
-                        <span className="text-zinc-100">{d.year_built}</span>
-                      </span>
-                    )}
-                    {hasType && (
-                      <span>
-                        <span className="text-zinc-500">Property type:</span>{" "}
-                        <span className="text-zinc-100">{d.property_type}</span>
-                      </span>
-                    )}
-                    {hasUnits && (
-                      <span>
-                        <span className="text-zinc-500">Units:</span>{" "}
-                        <span className="text-zinc-100">{d.units}</span>
-                      </span>
-                    )}
-                    {hasSqft && (
-                      <span>
-                        <span className="text-zinc-500">Living area:</span>{" "}
-                        <span className="text-zinc-100">
-                          {d.square_footage!.toLocaleString()} sq ft
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
-          <div className="mt-4">
-            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              By inspection category
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {Object.entries(result.byCategory)
-                .sort(([, a], [, b]) => b - a)
-                .map(([cat, count]) => (
-                  <span
-                    key={cat}
-                    className={
-                      cat.toUpperCase() === "COMPLAINT"
-                        ? "inline-flex items-center gap-1.5 rounded-md bg-red-100 px-2.5 py-1 text-sm font-semibold text-red-800 dark:bg-red-950/50 dark:text-red-200"
-                        : "inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1 text-sm text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
-                    }
-                  >
-                    <InspectionCategoryBadge category={cat} />
-                    <span>{count}</span>
-                  </span>
-                ))}
-            </div>
+            ))}
           </div>
 
-          <div className="mt-4">
-            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              All violations (newest first)
-            </p>
-            <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700">
-              <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Category</th>
-                    <th className="px-3 py-2 font-medium">Date</th>
-                    <th className="px-3 py-2 font-medium">Code</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 font-medium">Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.violations.map((v) => (
-                    <tr
-                      key={v.id}
-                      className="border-t border-zinc-100 dark:border-zinc-700"
-                    >
-                      <td className="px-3 py-2">
-                        <InspectionCategoryBadge
-                          category={v.inspection_category}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        {v.violation_date
-                          ? new Date(v.violation_date).toLocaleDateString()
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-2">{v.violation_code ?? "—"}</td>
-                      <td className="px-3 py-2">{v.violation_status ?? "—"}</td>
-                      <td className="max-w-[200px] truncate px-3 py-2">
-                        {v.violation_description ?? "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {!quickDone && (
-            <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-800/50">
-              <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-                Quick questions
-              </h3>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Help us tailor CasAlerts to your property — takes 10 seconds.
-              </p>
-
-              <div className="mt-4 space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How many properties do you own or manage?</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {["1", "2-4", "5-10", "11-50", "50+"].map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => setQuickProperties(opt)}
-                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                          quickProperties === opt
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                        }`}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
+          <div className="p-6">
+          {onboardingStep === 1 && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/50">
+                  <svg className="h-5 w-5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
                 </div>
-
                 <div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">What&apos;s your role?</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {[
-                      { value: "owner_occupant", label: "Owner-occupant" },
-                      { value: "landlord", label: "Landlord" },
-                      { value: "property_manager", label: "Property manager" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setQuickRole(opt.value)}
-                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                          quickRole === opt.value
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
+                  <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Property added</h2>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{result.address} · {result.cityName}</p>
                 </div>
+              </div>
 
-                <div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How is it managed?</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {[
-                      { value: "self_managed", label: "Self-managed" },
-                      { value: "management_company", label: "Management company" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setQuickManagement(opt.value)}
-                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                          quickManagement === opt.value
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
+              {result.warning && (
+                <p className="mt-3 text-sm text-amber-700 dark:text-amber-200">{result.warning}</p>
+              )}
+
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-zinc-100 p-3 text-center dark:bg-zinc-800">
+                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{result.openCount}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Open</p>
+                </div>
+                <div className="rounded-lg bg-zinc-100 p-3 text-center dark:bg-zinc-800">
+                  <p className="text-2xl font-bold text-zinc-600 dark:text-zinc-300">{result.closedCount}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Closed</p>
+                </div>
+                <div className="rounded-lg bg-zinc-100 p-3 text-center dark:bg-zinc-800">
+                  {(() => {
+                    const briefing = generateRiskBriefing(
+                      result.violations.map((v) => ({
+                        violation_description: v.violation_description,
+                        violation_code: v.violation_code,
+                        violation_status: v.violation_status,
+                        violation_date: v.violation_date,
+                        inspection_category: v.inspection_category,
+                      }))
+                    );
+                    return (
+                      <>
+                        <p className={`text-lg font-bold ${
+                          briefing.riskLevel === "critical" ? "text-red-600 dark:text-red-400" :
+                          briefing.riskLevel === "high" ? "text-orange-600 dark:text-orange-400" :
+                          briefing.riskLevel === "moderate" ? "text-amber-600 dark:text-amber-400" :
+                          "text-emerald-600 dark:text-emerald-400"
+                        }`}>
+                          {briefing.riskLevel.charAt(0).toUpperCase() + briefing.riskLevel.slice(1)}
+                        </p>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Risk level</p>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
               <div className="mt-5 flex items-center gap-3">
                 <button
                   type="button"
-                  disabled={quickSaving}
-                  onClick={() => submitQuickQuestions(result!.propertyId)}
-                  className="rounded-lg bg-zinc-900 px-5 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                  onClick={() => setOnboardingStep(2)}
+                  className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
                 >
-                  {quickSaving ? "Saving…" : "Continue to dashboard"}
+                  Next
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQuickDone(true)}
+                  onClick={() => router.push(`/dashboard/${result.propertyId}`)}
                   className="text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
                 >
-                  Skip
+                  Skip to property
                 </button>
               </div>
-            </div>
+            </>
           )}
 
-          {quickDone && (
-            <div className="mt-6 flex gap-3">
-              <Link
-                href="/dashboard"
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-              >
-                Go to dashboard
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  setResult(null);
-                  setQuickDone(false);
-                  setQuickProperties(null);
-                  setQuickRole(null);
-                  setQuickManagement(null);
-                }}
-                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                Add another property
-              </button>
-            </div>
+          {onboardingStep === 2 && (
+            <>
+              <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Quick questions</h3>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Help us tailor CasAlerts to your property — takes 10 seconds.</p>
+
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How many properties do you own or manage?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {["1", "2-4", "5-10", "11-50", "50+"].map((opt) => (
+                      <button key={opt} type="button" onClick={() => setQuickProperties(opt)}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                          quickProperties === opt
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}>{opt}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">What&apos;s your role?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[{value:"owner_occupant",label:"Owner-occupant"},{value:"landlord",label:"Landlord"},{value:"property_manager",label:"Property manager"}].map((opt) => (
+                      <button key={opt.value} type="button" onClick={() => setQuickRole(opt.value)}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                          quickRole === opt.value
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How is it managed?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[{value:"self_managed",label:"Self-managed"},{value:"management_company",label:"Management company"}].map((opt) => (
+                      <button key={opt.value} type="button" onClick={() => setQuickManagement(opt.value)}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                          quickManagement === opt.value
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center gap-3">
+                <button type="button" disabled={quickSaving}
+                  onClick={() => submitQuickQuestions(result.propertyId)}
+                  className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200">
+                  {quickSaving ? "Saving…" : "Continue"}
+                </button>
+                <button type="button" onClick={() => setOnboardingStep(3)}
+                  className="text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300">Skip</button>
+              </div>
+            </>
           )}
 
-          {quickDone && (
-            <PropertyQuestionnaire
-              propertyId={result.propertyId}
-              showUserQuestions={showUserQuestions}
-            />
+          {onboardingStep === 3 && (
+            <>
+              <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">A few more details</h3>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Optional — helps us provide better insights. You can always update these later.</p>
+
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Property type</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[{value:"single_family",label:"Single family"},{value:"multi_family",label:"Multi-family"},{value:"condo",label:"Condo/Co-op"},{value:"mixed_use",label:"Mixed use"},{value:"commercial",label:"Commercial"}].map((opt) => (
+                      <button key={opt.value} type="button" onClick={() => setOptPropertyType(opt.value)}
+                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                          optPropertyType === opt.value
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Is this property currently occupied?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[{value:"occupied",label:"Occupied"},{value:"vacant",label:"Vacant"},{value:"partial",label:"Partially occupied"}].map((opt) => (
+                      <button key={opt.value} type="button" onClick={() => setOptOccupied(opt.value)}
+                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                          optOccupied === opt.value
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Approximate monthly rent</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {["Under $1,000","$1,000-$2,000","$2,000-$3,000","$3,000-$5,000","$5,000+","N/A"].map((opt) => (
+                      <button key={opt} type="button" onClick={() => setOptRent(opt)}
+                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                          optRent === opt
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}>{opt}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How did you acquire this property?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {["Purchased","Inherited","Built","Foreclosure","Other"].map((opt) => (
+                      <button key={opt} type="button" onClick={() => setOptAcquisition(opt.toLowerCase())}
+                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                          optAcquisition === opt.toLowerCase()
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}>{opt}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Do you have a preferred contractor?</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[{value:"yes",label:"Yes"},{value:"no",label:"No"}].map((opt) => (
+                      <button key={opt.value} type="button" onClick={() => setOptContractor(opt.value)}
+                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                          optContractor === opt.value
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        }`}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center gap-3">
+                <button type="button" disabled={optSaving}
+                  onClick={() => submitOptionalQuestions(result.propertyId)}
+                  className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200">
+                  {optSaving ? "Saving…" : "Save & view property"}
+                </button>
+                <button type="button"
+                  onClick={() => router.push(`/dashboard/${result.propertyId}`)}
+                  className="text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300">Skip</button>
+              </div>
+            </>
           )}
+          </div>
         </div>
       )}
     </>
