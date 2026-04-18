@@ -41,6 +41,9 @@ export function DashboardPropertyCards({
   const [deleteModalProperty, setDeleteModalProperty] = useState<Property | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [pinning, setPinning] = useState<string | null>(null);
+  const [removalReason, setRemovalReason] = useState<string | null>(null);
+  const [soldDate, setSoldDate] = useState("");
+  const [wouldRecommend, setWouldRecommend] = useState<string | null>(null);
 
   const activeSet = new Set(activePropertyIds);
   const hasLocking = activePropertyIds.length > 0 && properties.length > activePropertyIds.length;
@@ -300,49 +303,121 @@ export function DashboardPropertyCards({
         </>
       )}
 
-      {/* Delete confirmation modal */}
+      {/* Delete confirmation modal with feedback questionnaire */}
       {deleteModalProperty && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => !deleting && setDeleteModalProperty(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+          onClick={() => {
+            if (!deleting) {
+              setDeleteModalProperty(null);
+              setRemovalReason(null);
+              setSoldDate("");
+              setWouldRecommend(null);
+            }
+          }}
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-modal-title"
         >
           <div
-            className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
+            className="my-8 w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
             onClick={(e) => e.stopPropagation()}
           >
-            <p className="text-center text-2xl" aria-hidden="true">⚠️</p>
-            <h2 id="delete-modal-title" className="mt-2 text-center text-lg font-bold text-zinc-900 dark:text-zinc-100">
+            <h2 id="delete-modal-title" className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
               Remove {deleteModalProperty.address}?
             </h2>
-            <p className="mt-2 text-center text-sm text-zinc-600 dark:text-zinc-400">
-              This will permanently delete all violation data and reminders for this property. This cannot be undone.
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+              Before you go, a quick 10-second question would really help us improve CasAlerts.
             </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => !deleting && setDeleteModalProperty(null)}
-                disabled={deleting}
-                className="flex-1 rounded-lg border border-zinc-300 bg-transparent px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                Cancel
-              </button>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Why are you removing this property?</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[
+                    { value: "sold", label: "Sold it" },
+                    { value: "no_longer_manage", label: "No longer manage it" },
+                    { value: "wrong_address", label: "Wrong address" },
+                    { value: "not_needed", label: "Don't need monitoring" },
+                    { value: "other", label: "Other" },
+                  ].map((opt) => (
+                    <button key={opt.value} type="button" onClick={() => setRemovalReason(opt.value)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                        removalReason === opt.value
+                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                      }`}>{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {removalReason === "sold" && (
+                <div>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">When did you sell it? (optional)</p>
+                  <input type="date" value={soldDate} onChange={(e) => setSoldDate(e.target.value)}
+                    className="mt-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100" />
+                </div>
+              )}
+
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Would you recommend CasAlerts to another landlord?</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[
+                    { value: "yes", label: "Yes" },
+                    { value: "maybe", label: "Maybe" },
+                    { value: "no", label: "No" },
+                  ].map((opt) => (
+                    <button key={opt.value} type="button" onClick={() => setWouldRecommend(opt.value)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                        wouldRecommend === opt.value
+                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                      }`}>{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <p className="mt-5 text-xs text-zinc-500 dark:text-zinc-500">
+              Removing this property will permanently delete all its violation data and reminders. This cannot be undone.
+            </p>
+
+            <div className="mt-4 flex flex-col gap-2">
               <button
                 type="button"
                 onClick={async () => {
                   if (deleting) return;
                   setDeleting(true);
-                  const r = await removeProperty(deleteModalProperty.id);
+                  const r = await removeProperty(deleteModalProperty.id, {
+                    removal_reason: removalReason,
+                    sold_date: soldDate || null,
+                    would_recommend: wouldRecommend,
+                  });
                   setDeleting(false);
                   setDeleteModalProperty(null);
+                  setRemovalReason(null);
+                  setSoldDate("");
+                  setWouldRecommend(null);
                   if (!r.error) router.refresh();
                 }}
                 disabled={deleting}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-70"
+                className="w-full rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-70"
               >
                 {deleting ? "Removing…" : "Remove property"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleting) return;
+                  setDeleteModalProperty(null);
+                  setRemovalReason(null);
+                  setSoldDate("");
+                  setWouldRecommend(null);
+                }}
+                disabled={deleting}
+                className="w-full rounded-lg border border-zinc-300 bg-transparent px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Cancel
               </button>
             </div>
           </div>

@@ -6,7 +6,14 @@ import { revalidatePath } from "next/cache";
 import { logComplianceEvent } from "@/lib/compliance-events";
 import { logAnalyticsEvent } from "@/lib/analytics-events";
 
-export async function removeProperty(propertyId: string): Promise<{ error?: string }> {
+export async function removeProperty(
+  propertyId: string,
+  feedback?: {
+    removal_reason?: string | null;
+    sold_date?: string | null;
+    would_recommend?: string | null;
+  }
+): Promise<{ error?: string }> {
   const userClient = await createClient();
   const {
     data: { user },
@@ -15,11 +22,25 @@ export async function removeProperty(propertyId: string): Promise<{ error?: stri
 
   const { data: property } = await userClient
     .from("properties")
-    .select("id, address")
+    .select("id, address, city_id")
     .eq("id", propertyId)
     .eq("user_id", user.id)
     .single();
   if (!property) return { error: "Property not found" };
+
+  const admin = createAdminClient();
+  if (feedback && (feedback.removal_reason || feedback.would_recommend || feedback.sold_date)) {
+    const { data: cityRow } = await admin.from("cities").select("slug").eq("id", property.city_id).single();
+    const { error: fbErr } = await admin.from("property_removal_feedback").insert({
+      user_id: user.id,
+      property_address: property.address,
+      city_slug: cityRow?.slug ?? null,
+      removal_reason: feedback.removal_reason ?? null,
+      sold_date: feedback.sold_date || null,
+      would_recommend: feedback.would_recommend ?? null,
+    });
+    if (fbErr) console.error("[removeProperty] feedback insert error", fbErr);
+  }
 
   await logComplianceEvent({
     propertyId,
@@ -27,6 +48,8 @@ export async function removeProperty(propertyId: string): Promise<{ error?: stri
     eventType: "property_removed",
     eventData: {
       description: `Property removed: ${property.address}`,
+      removal_reason: feedback?.removal_reason ?? undefined,
+      would_recommend: feedback?.would_recommend ?? undefined,
     },
   });
 
@@ -36,8 +59,6 @@ export async function removeProperty(propertyId: string): Promise<{ error?: stri
     propertyId,
     eventData: { action: "remove_property", address: property.address },
   });
-
-  const admin = createAdminClient();
 
   const { data: violations } = await admin
     .from("violations")
