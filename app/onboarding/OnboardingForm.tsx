@@ -29,7 +29,7 @@ export function OnboardingForm({
   const [addressSearchLoading, setAddressSearchLoading] = useState(false);
   const [addressSearchDone, setAddressSearchDone] = useState(false);
   const addressDropdownRef = useRef<HTMLDivElement>(null);
-  const [quickUnits, setQuickUnits] = useState<string | null>(null);
+  const [quickProperties, setQuickProperties] = useState<string | null>(null);
   const [quickRole, setQuickRole] = useState<string | null>(null);
   const [quickManagement, setQuickManagement] = useState<string | null>(null);
   const [quickDone, setQuickDone] = useState(false);
@@ -75,13 +75,12 @@ export function OnboardingForm({
   async function submitQuickQuestions(propertyId: string) {
     setQuickSaving(true);
     try {
-      const unitMap: Record<string, number> = { "1": 1, "2-4": 3, "5-10": 7, "11+": 15 };
       await fetch("/api/questionnaire", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId,
-          unit_count: quickUnits ? unitMap[quickUnits] ?? null : null,
+          total_properties_owned: quickProperties,
           ownership_role: quickRole,
           management_type: quickManagement,
         }),
@@ -106,7 +105,7 @@ export function OnboardingForm({
       setAddressSuggestions([]);
       setAddressSearchDone(false);
       setQuickDone(false);
-      setQuickUnits(null);
+      setQuickProperties(null);
       setQuickRole(null);
       setQuickManagement(null);
     }
@@ -470,20 +469,20 @@ export function OnboardingForm({
 
               <div className="mt-4 space-y-4">
                 <div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How many units does this property have?</p>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How many properties do you own or manage?</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {["1", "2-4", "5-10", "11+"].map((opt) => (
+                    {["1", "2-4", "5-10", "11-50", "50+"].map((opt) => (
                       <button
                         key={opt}
                         type="button"
-                        onClick={() => setQuickUnits(opt)}
+                        onClick={() => setQuickProperties(opt)}
                         className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                          quickUnits === opt
+                          quickProperties === opt
                             ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                             : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                         }`}
                       >
-                        {opt} {opt === "1" ? "unit" : "units"}
+                        {opt}
                       </button>
                     ))}
                   </div>
@@ -570,7 +569,7 @@ export function OnboardingForm({
                 onClick={() => {
                   setResult(null);
                   setQuickDone(false);
-                  setQuickUnits(null);
+                  setQuickProperties(null);
                   setQuickRole(null);
                   setQuickManagement(null);
                 }}
