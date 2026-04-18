@@ -12,6 +12,7 @@ export async function removeProperty(
     removal_reason?: string | null;
     sold_date?: string | null;
     would_recommend?: string | null;
+    recommend_reason?: string | null;
   }
 ): Promise<{ error?: string }> {
   const userClient = await createClient();
@@ -29,7 +30,7 @@ export async function removeProperty(
   if (!property) return { error: "Property not found" };
 
   const admin = createAdminClient();
-  if (feedback && (feedback.removal_reason || feedback.would_recommend || feedback.sold_date)) {
+  if (feedback && (feedback.removal_reason || feedback.would_recommend || feedback.sold_date || feedback.recommend_reason)) {
     const { data: cityRow } = await admin.from("cities").select("slug").eq("id", property.city_id).single();
     const { error: fbErr } = await admin.from("property_removal_feedback").insert({
       user_id: user.id,
@@ -38,6 +39,7 @@ export async function removeProperty(
       removal_reason: feedback.removal_reason ?? null,
       sold_date: feedback.sold_date || null,
       would_recommend: feedback.would_recommend ?? null,
+      recommend_reason: feedback.recommend_reason?.trim() || null,
     });
     if (fbErr) console.error("[removeProperty] feedback insert error", fbErr);
   }

@@ -44,6 +44,7 @@ export function DashboardPropertyCards({
   const [removalReason, setRemovalReason] = useState<string | null>(null);
   const [soldDate, setSoldDate] = useState("");
   const [wouldRecommend, setWouldRecommend] = useState<string | null>(null);
+  const [recommendReason, setRecommendReason] = useState("");
 
   const activeSet = new Set(activePropertyIds);
   const hasLocking = activePropertyIds.length > 0 && properties.length > activePropertyIds.length;
@@ -313,6 +314,7 @@ export function DashboardPropertyCards({
               setRemovalReason(null);
               setSoldDate("");
               setWouldRecommend(null);
+              setRecommendReason("");
             }
           }}
           role="dialog"
@@ -375,6 +377,18 @@ export function DashboardPropertyCards({
                       }`}>{opt.label}</button>
                   ))}
                 </div>
+                {wouldRecommend === "no" && (
+                  <div className="mt-3">
+                    <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">What could we do better?</p>
+                    <textarea
+                      value={recommendReason}
+                      onChange={(e) => setRecommendReason(e.target.value)}
+                      placeholder="Your honest feedback helps us improve — even a short sentence makes a big difference."
+                      rows={3}
+                      className="mt-2 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -392,12 +406,14 @@ export function DashboardPropertyCards({
                     removal_reason: removalReason,
                     sold_date: soldDate || null,
                     would_recommend: wouldRecommend,
+                    recommend_reason: recommendReason,
                   });
                   setDeleting(false);
                   setDeleteModalProperty(null);
                   setRemovalReason(null);
                   setSoldDate("");
                   setWouldRecommend(null);
+                  setRecommendReason("");
                   if (!r.error) router.refresh();
                 }}
                 disabled={deleting}
@@ -413,6 +429,7 @@ export function DashboardPropertyCards({
                   setRemovalReason(null);
                   setSoldDate("");
                   setWouldRecommend(null);
+                  setRecommendReason("");
                 }}
                 disabled={deleting}
                 className="w-full rounded-lg border border-zinc-300 bg-transparent px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
