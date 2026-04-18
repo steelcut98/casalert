@@ -27,6 +27,7 @@ type AnalyticsEventType =
   | "reminder_set_clicked"
   | "mark_resolved_clicked"
   | "property_info_opened"
+  | "property_details_edited"
   | "undo_resolution_clicked";
 
 function sendAnalyticsEvent(

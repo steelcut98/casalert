@@ -14,6 +14,7 @@ export type ComplianceEventType =
   | "reminder_dismissed"
   | "property_added"
   | "property_removed"
+  | "property_details_updated"
   | "property_rescanned"
   | "property_enriched"
   | "baseline_scan_completed"

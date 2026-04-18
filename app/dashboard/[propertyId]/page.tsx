@@ -40,7 +40,7 @@ export default async function PropertyDetailPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan")
+    .select("plan, property_management_company, management_company_website, total_properties_owned")
     .eq("id", user.id)
     .single();
   const canExportCsv = (profile?.plan ?? "free") !== "free";
@@ -99,7 +99,7 @@ export default async function PropertyDetailPage({
 
   const { data: propertyDetailsRow } = await supabase
     .from("property_details")
-    .select("year_built, property_type, unit_count, square_footage, assessed_value, bedrooms, bathrooms, stories, exterior_condition, interior_condition, market_value, sale_price, sale_date, building_description, central_air, garage_spaces, quality_grade, zoning")
+    .select("year_built, property_type, unit_count, square_footage, assessed_value, bedrooms, bathrooms, stories, exterior_condition, interior_condition, market_value, sale_price, sale_date, building_description, central_air, garage_spaces, quality_grade, zoning, management_type, occupied_status, approximate_rent, acquisition_year, acquisition_method, ownership_role, has_preferred_contractor")
     .eq("property_id", propertyId)
     .maybeSingle();
   const toNum = (v: unknown) => {
@@ -327,6 +327,20 @@ export default async function PropertyDetailPage({
           resolutions={resolutions ?? []}
           complianceScore={complianceScore}
           userPlan={profile?.plan ?? "free"}
+          editableFields={{
+            property_type: (propertyDetailsRow as { property_type?: string | null })?.property_type ?? null,
+            unit_count: (propertyDetailsRow as { unit_count?: number | null })?.unit_count ?? null,
+            management_type: (propertyDetailsRow as { management_type?: string | null })?.management_type ?? null,
+            occupied_status: (propertyDetailsRow as { occupied_status?: string | null })?.occupied_status ?? null,
+            approximate_rent: (propertyDetailsRow as { approximate_rent?: string | null })?.approximate_rent ?? null,
+            acquisition_year: (propertyDetailsRow as { acquisition_year?: number | null })?.acquisition_year ?? null,
+            acquisition_method: (propertyDetailsRow as { acquisition_method?: string | null })?.acquisition_method ?? null,
+            ownership_role: (propertyDetailsRow as { ownership_role?: string | null })?.ownership_role ?? null,
+            has_preferred_contractor: (propertyDetailsRow as { has_preferred_contractor?: boolean | null })?.has_preferred_contractor ?? null,
+            property_management_company: profile?.property_management_company ?? null,
+            management_company_website: profile?.management_company_website ?? null,
+            total_properties_owned: profile?.total_properties_owned ?? null,
+          }}
         />
       </main>
     </div>

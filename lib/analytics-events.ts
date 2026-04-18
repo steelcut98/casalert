@@ -17,7 +17,8 @@ export type AnalyticsEventType =
   | "onboarding_completed"
   | "questionnaire_submitted"
   | "violation_expanded"
-  | "violation_link_clicked";
+  | "violation_link_clicked"
+  | "property_details_edited";
 
 export async function logAnalyticsEvent(params: {
   userId: string;

@@ -1,7 +1,9 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { logPropertyEdits } from "@/lib/property-edits";
 import { fetchChicagoViolationsForProperty } from "@/lib/chicago-violations";
 import { fetchPhiladelphiaViolationsForProperty } from "@/lib/philadelphia-violations";
 import { logComplianceEvent, logComplianceEventBatch } from "@/lib/compliance-events";
@@ -516,3 +518,130 @@ export async function updatePropertyNickname(
   revalidatePath("/dashboard");
   return {};
 }
+
+export async function updatePropertyDetails(
+  propertyId: string,
+  updates: {
+    property_type?: string | null;
+    unit_count?: number | null;
+    management_type?: string | null;
+    occupied_status?: string | null;
+    approximate_rent?: string | null;
+    acquisition_year?: number | null;
+    acquisition_method?: string | null;
+    ownership_role?: string | null;
+    has_preferred_contractor?: boolean | null;
+    property_management_company?: string | null;
+    management_company_website?: string | null;
+    total_properties_owned?: string | null;
+  }
+): Promise<{ error?: string; changesLogged?: number }> {
+  const userClient = await createClient();
+  const { data: { user } } = await userClient.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const { data: property } = await userClient
+    .from("properties")
+    .select("id, user_id")
+    .eq("id", propertyId)
+    .eq("user_id", user.id)
+    .single();
+  if (!property) return { error: "Property not found" };
+
+  const admin = createAdminClient();
+
+  const propertyDetailFields = [
+    "property_type", "unit_count", "management_type", "occupied_status",
+    "approximate_rent", "acquisition_year", "acquisition_method",
+    "ownership_role", "has_preferred_contractor",
+  ] as const;
+
+  const propertyUpdates: Record<string, unknown> = {};
+  for (const f of propertyDetailFields) {
+    if (updates[f] !== undefined) propertyUpdates[f] = updates[f];
+  }
+
+  let totalLogged = 0;
+
+  if (Object.keys(propertyUpdates).length > 0) {
+    const { data: existing } = await admin
+      .from("property_details")
+      .select([...propertyDetailFields].join(","))
+      .eq("property_id", propertyId)
+      .maybeSingle();
+
+    const oldValues: Record<string, unknown> = {};
+    const existingRow = existing as unknown as Record<string, unknown> | null;
+    for (const f of propertyDetailFields) {
+      oldValues[f] = existingRow ? existingRow[f] : null;
+    }
+
+    const { error: upsertErr } = await admin
+      .from("property_details")
+      .upsert(
+        { property_id: propertyId, ...propertyUpdates, updated_at: new Date().toISOString() },
+        { onConflict: "property_id" }
+      );
+    if (upsertErr) return { error: upsertErr.message };
+
+    const audit = await logPropertyEdits({
+      userId: property.user_id,
+      changedByUserId: user.id,
+      propertyId,
+      tableName: "property_details",
+      oldValues,
+      newValues: propertyUpdates,
+    });
+    totalLogged += audit.changesLogged;
+  }
+
+  const profileFields = ["property_management_company", "management_company_website", "total_properties_owned"] as const;
+  const profileUpdates: Record<string, unknown> = {};
+  for (const f of profileFields) {
+    if (updates[f] !== undefined) profileUpdates[f] = updates[f];
+  }
+
+  if (Object.keys(profileUpdates).length > 0) {
+    const { data: existingProfile } = await admin
+      .from("profiles")
+      .select([...profileFields].join(","))
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const oldProfileValues: Record<string, unknown> = {};
+    const existingProfileRow = existingProfile as unknown as Record<string, unknown> | null;
+    for (const f of profileFields) {
+      oldProfileValues[f] = existingProfileRow ? existingProfileRow[f] : null;
+    }
+
+    const { error: profileErr } = await admin
+      .from("profiles")
+      .update(profileUpdates)
+      .eq("id", user.id);
+    if (profileErr) return { error: profileErr.message };
+
+    const audit = await logPropertyEdits({
+      userId: user.id,
+      changedByUserId: user.id,
+      propertyId: null,
+      tableName: "profiles",
+      oldValues: oldProfileValues,
+      newValues: profileUpdates,
+    });
+    totalLogged += audit.changesLogged;
+  }
+
+  await logComplianceEvent({
+    propertyId,
+    userId: user.id,
+    eventType: "property_details_updated",
+    eventData: {
+      description: `Property details updated (${totalLogged} fields changed)`,
+      fields_changed: totalLogged,
+    },
+  });
+
+  revalidatePath(`/dashboard/${propertyId}`);
+  return { changesLogged: totalLogged };
+}
+

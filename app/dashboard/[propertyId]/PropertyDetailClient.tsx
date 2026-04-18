@@ -8,6 +8,7 @@ import {
   setBulkViolationReminders,
   rescanPropertyViolations,
   revertResolution,
+  updatePropertyDetails,
   type ReminderFrequency,
 } from "./actions";
 import { ResolutionForm } from "./ResolutionForm";
@@ -110,6 +111,7 @@ export function PropertyDetailClient({
   resolutions = [],
   complianceScore = null,
   userPlan = "free",
+  editableFields,
 }: {
   propertyId: string;
   violations: ViolationRow[];
@@ -132,6 +134,20 @@ export function PropertyDetailClient({
   }>;
   complianceScore?: ComplianceScoreResult | null;
   userPlan?: string;
+  editableFields?: {
+    property_type: string | null;
+    unit_count: number | null;
+    management_type: string | null;
+    occupied_status: string | null;
+    approximate_rent: string | null;
+    acquisition_year: number | null;
+    acquisition_method: string | null;
+    ownership_role: string | null;
+    has_preferred_contractor: boolean | null;
+    property_management_company: string | null;
+    management_company_website: string | null;
+    total_properties_owned: string | null;
+  };
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -157,6 +173,63 @@ export function PropertyDetailClient({
   const qualityTooltipRef = useRef<HTMLSpanElement>(null);
   const [resolutionViolation, setResolutionViolation] = useState<ViolationRow | null>(null);
   const { trackEvent } = useAnalytics(propertyId);
+
+  // Edit property details modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editPropertyType, setEditPropertyType] = useState<string | null>(editableFields?.property_type ?? null);
+  const [editUnitCount, setEditUnitCount] = useState<string>(editableFields?.unit_count != null ? String(editableFields.unit_count) : "");
+  const [editManagementType, setEditManagementType] = useState<string | null>(editableFields?.management_type ?? null);
+  const [editOccupiedStatus, setEditOccupiedStatus] = useState<string | null>(editableFields?.occupied_status ?? null);
+  const [editApproximateRent, setEditApproximateRent] = useState<string | null>(editableFields?.approximate_rent ?? null);
+  const [editAcquisitionYear, setEditAcquisitionYear] = useState<string>(editableFields?.acquisition_year != null ? String(editableFields.acquisition_year) : "");
+  const [editAcquisitionMethod, setEditAcquisitionMethod] = useState<string | null>(editableFields?.acquisition_method ?? null);
+  const [editOwnershipRole, setEditOwnershipRole] = useState<string | null>(editableFields?.ownership_role ?? null);
+  const [editTotalPropertiesOwned, setEditTotalPropertiesOwned] = useState<string | null>(editableFields?.total_properties_owned ?? null);
+  const [editCompanyName, setEditCompanyName] = useState<string>(editableFields?.property_management_company ?? "");
+  const [editCompanyWebsite, setEditCompanyWebsite] = useState<string>(editableFields?.management_company_website ?? "");
+
+  // Compliance score info tooltip
+  const [scoreInfoOpen, setScoreInfoOpen] = useState(false);
+  const scoreInfoRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!scoreInfoOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (scoreInfoRef.current && !scoreInfoRef.current.contains(e.target as Node)) {
+        setScoreInfoOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [scoreInfoOpen]);
+
+  async function handleSaveEdits() {
+    setEditError(null);
+    setEditSaving(true);
+    const result = await updatePropertyDetails(propertyId, {
+      property_type: editPropertyType,
+      unit_count: editUnitCount.trim() ? Number(editUnitCount) : null,
+      management_type: editManagementType,
+      occupied_status: editOccupiedStatus,
+      approximate_rent: editApproximateRent,
+      acquisition_year: editAcquisitionYear.trim() ? Number(editAcquisitionYear) : null,
+      acquisition_method: editAcquisitionMethod,
+      ownership_role: editOwnershipRole,
+      total_properties_owned: editTotalPropertiesOwned,
+      property_management_company: editCompanyName.trim() || null,
+      management_company_website: editCompanyWebsite.trim() || null,
+    });
+    setEditSaving(false);
+    if (result.error) {
+      setEditError(result.error);
+      return;
+    }
+    trackEvent("property_details_edited", { changes_logged: result.changesLogged ?? 0 });
+    setEditModalOpen(false);
+    window.location.reload();
+  }
 
   useEffect(() => {
     if (!infoPopoverAnchor) return;
@@ -768,6 +841,16 @@ export function PropertyDetailClient({
           <span aria-hidden>🏠</span>
           Property Info
         </button>
+        <button
+          type="button"
+          onClick={() => setEditModalOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          Edit details
+        </button>
       </div>
 
       {propertyInfoOpen && (
@@ -1025,6 +1108,24 @@ export function PropertyDetailClient({
             </span>
             <span className="text-zinc-500 dark:text-zinc-400 font-normal text-xs">
               Score: {complianceScore.score}/100
+            </span>
+            <span ref={scoreInfoRef} className="relative inline-block">
+              <button
+                type="button"
+                onClick={() => setScoreInfoOpen((v) => !v)}
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-600"
+                aria-label="What is the compliance score?"
+              >
+                <span className="text-[10px] font-semibold">i</span>
+              </button>
+              {scoreInfoOpen && (
+                <span className="absolute right-0 top-full z-50 mt-1 w-72 rounded-lg border border-zinc-200 bg-white p-3 text-left shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                  <span className="block text-xs font-semibold text-zinc-900 dark:text-zinc-100">CasAlerts Compliance Score</span>
+                  <span className="mt-1 block text-xs font-normal text-zinc-600 dark:text-zinc-400">
+                    A 0–100 severity-weighted score (A–F grade) measuring your property&apos;s compliance health. Factors include open violations by severity, age of violations, resolution history, and deadline adherence. Updated daily.
+                  </span>
+                </span>
+              )}
             </span>
           </span>
         )}
@@ -1456,6 +1557,154 @@ export function PropertyDetailClient({
             window.location.reload();
           }}
         />
+      )}
+
+      {editModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+          onClick={() => !editSaving && setEditModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="my-8 w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Edit property details</h2>
+              <button
+                type="button"
+                onClick={() => !editSaving && setEditModalOpen(false)}
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Only changed fields will be saved. All edits are tracked.
+            </p>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Property type</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[{v:"single_family",l:"Single family"},{v:"multi_family",l:"Multi-family"},{v:"condo",l:"Condo/Co-op"},{v:"mixed_use",l:"Mixed use"},{v:"commercial",l:"Commercial"}].map((o) => (
+                    <button key={o.v} type="button" onClick={() => setEditPropertyType(editPropertyType === o.v ? null : o.v)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${editPropertyType === o.v ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"}`}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Unit count</p>
+                <input type="number" min="1" value={editUnitCount} onChange={(e) => setEditUnitCount(e.target.value)}
+                  className="mt-2 w-32 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100" />
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Your role</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[{v:"owner_occupant",l:"Owner-occupant"},{v:"landlord",l:"Landlord"},{v:"property_manager",l:"Property manager"}].map((o) => (
+                    <button key={o.v} type="button" onClick={() => setEditOwnershipRole(editOwnershipRole === o.v ? null : o.v)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${editOwnershipRole === o.v ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"}`}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">How is it managed?</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[{v:"self_managed",l:"Self-managed"},{v:"management_company",l:"Management company"}].map((o) => (
+                    <button key={o.v} type="button" onClick={() => setEditManagementType(editManagementType === o.v ? null : o.v)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${editManagementType === o.v ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"}`}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+
+              {(editManagementType === "management_company" || editOwnershipRole === "property_manager") && (
+                <div className="flex flex-wrap gap-2">
+                  <input type="text" placeholder="Company name" value={editCompanyName} onChange={(e) => setEditCompanyName(e.target.value)}
+                    className="flex-1 min-w-[140px] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100" />
+                  <input type="url" placeholder="Website" value={editCompanyWebsite} onChange={(e) => setEditCompanyWebsite(e.target.value)}
+                    className="flex-1 min-w-[140px] rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100" />
+                </div>
+              )}
+
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Occupied status</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[{v:"occupied",l:"Occupied"},{v:"vacant",l:"Vacant"},{v:"partial",l:"Partially occupied"}].map((o) => (
+                    <button key={o.v} type="button" onClick={() => setEditOccupiedStatus(editOccupiedStatus === o.v ? null : o.v)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${editOccupiedStatus === o.v ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"}`}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Approximate monthly rent</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {["Under $1,000","$1,000-$2,000","$2,000-$3,000","$3,000-$5,000","$5,000+","N/A"].map((o) => (
+                    <button key={o} type="button" onClick={() => setEditApproximateRent(editApproximateRent === o ? null : o)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${editApproximateRent === o ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"}`}>{o}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Acquisition year</p>
+                <input type="number" min="1800" max="2030" placeholder="e.g. 2019" value={editAcquisitionYear} onChange={(e) => setEditAcquisitionYear(e.target.value)}
+                  className="mt-2 w-32 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100" />
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Acquisition method</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {["purchased","inherited","built","foreclosure","other"].map((o) => (
+                    <button key={o} type="button" onClick={() => setEditAcquisitionMethod(editAcquisitionMethod === o ? null : o)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${editAcquisitionMethod === o ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"}`}>{o.charAt(0).toUpperCase() + o.slice(1)}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Profile</p>
+                <p className="mt-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">Total properties you own or manage</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {["1","2-4","5-10","11-50","50+"].map((o) => (
+                    <button key={o} type="button" onClick={() => setEditTotalPropertiesOwned(editTotalPropertiesOwned === o ? null : o)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${editTotalPropertiesOwned === o ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"}`}>{o}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {editError && (
+              <p className="mt-3 text-sm text-red-600 dark:text-red-400">{editError}</p>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => !editSaving && setEditModalOpen(false)}
+                disabled={editSaving}
+                className="flex-1 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdits}
+                disabled={editSaving}
+                className="flex-1 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-70 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              >
+                {editSaving ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
