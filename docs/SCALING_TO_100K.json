@@ -1,0 +1,1968 @@
+{
+  "meta": {
+    "document_title": "CasAlerts \u2014 Scaling to 100,000 Users: Engineering Devguide",
+    "version": "1.0.0",
+    "last_updated": "2026-04-22",
+    "owner": "Engineering",
+    "status": "Living document \u2014 update as items are completed",
+    "purpose": "Comprehensive engineering checklist to scale CasAlerts from current pre-launch state to reliably serving 100,000 users without data loss, missed alerts, or user-visible degradation.",
+    "target_scale": {
+      "total_users": 100000,
+      "user_mix_assumption": {
+        "free_60_percent": 60000,
+        "starter_30_percent": 30000,
+        "pro_10_percent": 10000
+      },
+      "avg_properties_per_tier": {
+        "free": 1,
+        "starter": 3,
+        "pro": 6
+      },
+      "estimated_total_properties": 210000,
+      "estimated_violations_rows_after_2_years": "10M-15M",
+      "estimated_compliance_score_history_rows_per_year": "76M",
+      "estimated_analytics_events_rows_per_year": "100M+",
+      "estimated_emails_per_month": "250k-400k",
+      "estimated_sms_per_month": "40k-80k (paid tiers only)",
+      "estimated_peak_concurrent_dashboard_sessions": "500-1500",
+      "estimated_daily_cron_work_units": "210k property scans + alerts + score snapshots"
+    },
+    "priority_key": {
+      "P0": "Breaks before 10k users. MUST be done before any marketing push.",
+      "P1": "Breaks between 10k and 50k users. MUST be done within 60 days post-launch growth.",
+      "P2": "Required to reach 100k users cleanly. Do before crossing 30k.",
+      "P3": "Polish / cost optimization. Do after the above."
+    },
+    "effort_key": {
+      "XS": "Hours",
+      "S": "1-2 days",
+      "M": "3-5 days",
+      "L": "1-2 weeks",
+      "XL": "2-4 weeks"
+    },
+    "critical_data_rules": [
+      "NEVER remove or modify existing data collection code without explicit instruction.",
+      "Every new feature must log appropriate compliance_events and analytics_events.",
+      "Every violation insertion must include severity_classification.",
+      "Every property enrichment must save zip_code, latitude, longitude, parcel_id where available.",
+      "Resolution data (costs, contractors, ratings) is the most valuable proprietary data \u2014 never lose it.",
+      "The violation_external_id must be saved in violation_resolutions to survive rescans."
+    ],
+    "current_architecture_failure_point": "Current sequential CRON loop will fail at ~2,000-3,000 properties (Vercel 300s timeout). Must be fixed before any real growth."
+  },
+  "categories": [
+    {
+      "id": "background-processing",
+      "title": "Background Processing & CRON Architecture",
+      "summary": "The single most critical area. Current in-process CRON loop will fail before 3k properties. All alert delivery, scoring, and scanning must move to a queue-based architecture with retries, idempotency, and dead-letter queues.",
+      "items": [
+        {
+          "id": "bg-01",
+          "title": "Replace in-process CRON loop with a queue (Inngest or QStash)",
+          "priority": "P0",
+          "effort": "L",
+          "problem": "app/api/cron/scan-violations/route.ts iterates every property sequentially in a single Vercel function invocation. At 210k properties x ~2s per property = ~117 hours. Vercel Pro caps function duration at 300s. Current code will be silently truncated \u2014 some properties get scanned, some do not, with no visibility into which. This is a data-integrity disaster since your moat depends on collecting every data point correctly.",
+          "solution_steps": [
+            "Adopt Inngest (recommended \u2014 Next.js native, typed events, generous free tier) or QStash (simpler, HTTP-based).",
+            "Split the monolithic CRON into four phases, each dispatched as events: scan.property.requested, alert.new_violation.send, alert.reminder.send, score.snapshot.requested.",
+            "Dispatcher CRON runs daily, queries all properties, enqueues one event per property, then returns immediately (<5s).",
+            "Each worker handler must be idempotent and use onFailure retry with exponential backoff (3 retries: 30s, 2min, 10min).",
+            "Concurrency limit per worker: 10 (respects Socrata/Carto rate limits \u2014 see external-api category).",
+            "Keep maxDuration=60 on the dispatcher route. Individual workers get 300s each on Vercel Pro.",
+            "Log every event enqueue + dequeue to cron_runs table for observability."
+          ],
+          "files_affected": [
+            "NEW: lib/inngest/client.ts (Inngest client setup)",
+            "NEW: lib/inngest/functions/scan-property.ts (per-property scan worker)",
+            "NEW: lib/inngest/functions/send-alert-email.ts (email worker)",
+            "NEW: lib/inngest/functions/send-alert-sms.ts (SMS worker)",
+            "NEW: lib/inngest/functions/snapshot-score.ts (score snapshot worker)",
+            "NEW: app/api/inngest/route.ts (Inngest serve endpoint)",
+            "MODIFY: app/api/cron/scan-violations/route.ts \u2014 becomes a thin dispatcher that enqueues events, removes the loop body",
+            "MODIFY: vercel.json \u2014 no crons config change, but verify maxDuration=60 on dispatcher"
+          ],
+          "verification": [
+            "Trigger dispatcher manually via curl with CRON_SECRET \u2014 confirm N events enqueued where N = count of properties.",
+            "Simulate a failing property (throw in worker) \u2014 confirm it retries 3 times, then lands in Inngest DLQ (not silently lost).",
+            "Time full end-to-end run \u2014 target <30 min for 210k properties at concurrency 10.",
+            "Check cron_runs table \u2014 every property should have exactly one successful scan row per day."
+          ],
+          "dependencies": [
+            "bg-04"
+          ],
+          "do_not_change": "Do NOT remove any existing violation insertion logic, severity classification, or compliance_event logging. Only change WHERE it runs (worker vs inline loop)."
+        },
+        {
+          "id": "bg-02",
+          "title": "Dead-letter queue for failed email/SMS alerts",
+          "priority": "P0",
+          "effort": "M",
+          "problem": "Today, if Resend or Twilio fails, the error is logged to console and forgotten. needs_alert is still cleared in the database. The user never gets the alert. This silently breaks the core product promise at scale where transient provider errors become common.",
+          "solution_steps": [
+            "Create failed_alerts table with idempotency key, retry count, next_retry_at.",
+            "In lib/email-alerts.ts and lib/sms-alerts.ts: on failure, do NOT clear needs_alert \u2014 insert into failed_alerts instead.",
+            "Add retry worker (lib/inngest/functions/retry-failed-alerts.ts) running every 15 minutes via Inngest cron trigger.",
+            "Retry logic: exponential backoff 5min, 15min, 1h, 6h, 24h. After 5 failed attempts mark as error_permanent and fire a Sentry alert.",
+            "Add admin dashboard route app/admin/failed-alerts/page.tsx to view and manually re-trigger.",
+            "On successful retry, fire compliance_event: alert_delivered_after_retry for moat data."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_failed_alerts.sql (schema migration)",
+            "NEW: lib/inngest/functions/retry-failed-alerts.ts",
+            "NEW: app/admin/failed-alerts/page.tsx (admin-only)",
+            "MODIFY: lib/email-alerts.ts \u2014 on error, insert into failed_alerts table",
+            "MODIFY: lib/sms-alerts.ts \u2014 on error, insert into failed_alerts table",
+            "MODIFY: app/api/cron/scan-violations/route.ts \u2014 do NOT clear needs_alert if send failed"
+          ],
+          "sql": "create table failed_alerts (\n  id uuid primary key default gen_random_uuid(),\n  channel text not null check (channel in ('email','sms')),\n  recipient text not null,\n  user_id uuid references profiles(id) on delete cascade,\n  property_id uuid references properties(id) on delete cascade,\n  violation_id uuid references violations(id) on delete set null,\n  idempotency_key text not null,\n  payload jsonb not null,\n  error_message text,\n  attempt_count int not null default 1,\n  next_retry_at timestamptz not null default now(),\n  resolved_at timestamptz,\n  resolution_type text check (resolution_type in ('delivered','error_permanent','manual_cancel')),\n  created_at timestamptz not null default now()\n);\ncreate index idx_failed_alerts_retry on failed_alerts(next_retry_at) where resolved_at is null;\ncreate index idx_failed_alerts_user on failed_alerts(user_id, created_at desc);",
+          "verification": [
+            "Simulate Resend outage (invalid API key in staging) \u2014 confirm failed_alerts row appears AND needs_alert stays true on the violation.",
+            "Restore API key, wait for retry worker \u2014 confirm row marked resolved and user receives email.",
+            "Verify that a single failed alert cannot be duplicate-retried (idempotency_key unique check)."
+          ],
+          "dependencies": [
+            "bg-01",
+            "bg-03"
+          ],
+          "do_not_change": "Do not change the compliance_event logging in email/SMS send functions. Preserve all existing success-path data collection."
+        },
+        {
+          "id": "bg-03",
+          "title": "Idempotency keys on every outbound alert",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "At scale with retries (from bg-01 and bg-02), duplicate emails/SMS become statistically certain. A landlord receiving the same alert 3 times erodes trust instantly and wastes $$ on SMS.",
+          "solution_steps": [
+            "Compute idempotency key in lib/alert-idempotency.ts: sha256(violation_id + channel + user_id) for new-violation alerts; sha256(reminder_id + channel + scheduled_date) for reminders.",
+            "Create alert_sends table with idempotency_key as PRIMARY KEY.",
+            "Before sending in sendNewViolationEmail/sendNewViolationSMS/sendReminder*: insert into alert_sends with 'on conflict do nothing'. If 0 rows inserted, the send already happened \u2014 return {success:true, skipped:true} without calling Resend/Twilio.",
+            "After successful send, UPDATE alert_sends.external_id with provider message ID for auditing.",
+            "Document idempotency boundary: an idempotency window of 7 days is appropriate (reminders may legitimately re-send after that)."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_alert_sends.sql",
+            "NEW: lib/alert-idempotency.ts (key computation)",
+            "MODIFY: lib/email-alerts.ts \u2014 sendNewViolationEmail, sendReminderEmail",
+            "MODIFY: lib/sms-alerts.ts \u2014 sendNewViolationSMS, sendReminderSMS"
+          ],
+          "sql": "create table alert_sends (\n  idempotency_key text primary key,\n  channel text not null check (channel in ('email','sms')),\n  user_id uuid not null references profiles(id) on delete cascade,\n  property_id uuid not null references properties(id) on delete cascade,\n  violation_id uuid references violations(id) on delete set null,\n  reminder_id uuid references violation_reminders(id) on delete set null,\n  external_id text,\n  sent_at timestamptz not null default now()\n);\ncreate index idx_alert_sends_user_time on alert_sends(user_id, sent_at desc);\ncreate index idx_alert_sends_property on alert_sends(property_id, sent_at desc);",
+          "verification": [
+            "Unit test: call sendNewViolationEmail twice with same payload \u2014 confirm second call returns skipped=true and only one Resend call fires.",
+            "Integration test: trigger Inngest retry on a successful send \u2014 confirm no duplicate.",
+            "Check alert_sends row count equals actual delivery count for a test run."
+          ],
+          "dependencies": [],
+          "do_not_change": "Preserve all compliance_event logging on successful sends."
+        },
+        {
+          "id": "bg-04",
+          "title": "Per-property scan observability (cron_runs table)",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Without per-property timing, you cannot identify which addresses (many violations, slow geocoding, flaky city APIs) are blowing up your CRON budget. You also cannot tell if CRON ran successfully today at all.",
+          "solution_steps": [
+            "Create cron_runs table.",
+            "Wrap each worker handler: const start = Date.now(); try { ... } finally { insert cron_runs(duration_ms: Date.now()-start, ok, phase, property_id) }.",
+            "Create materialized view cron_health_daily (rolled up per day + phase).",
+            "Alert via Sentry if any phase's p95 exceeds 5s over a run \u2014 indicates city API slowdown.",
+            "Alert if any property has 3 consecutive failed scans \u2014 likely bad address or deleted from city DB."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_cron_runs.sql",
+            "MODIFY: all lib/inngest/functions/*.ts \u2014 wrap handlers with timing"
+          ],
+          "sql": "create table cron_runs (\n  id uuid primary key default gen_random_uuid(),\n  run_date date not null default current_date,\n  property_id uuid,\n  phase text not null check (phase in ('scan','alert_email','alert_sms','reminder','score_snapshot','enrichment')),\n  duration_ms int,\n  ok boolean not null,\n  error text,\n  created_at timestamptz not null default now()\n);\ncreate index idx_cron_runs_date_phase on cron_runs(run_date, phase);\ncreate index idx_cron_runs_property on cron_runs(property_id, created_at desc) where ok = false;",
+          "verification": [
+            "After one CRON run, query: select phase, count(*), percentile_cont(0.95) within group (order by duration_ms) from cron_runs where run_date = current_date group by phase.",
+            "Confirm row count for phase='scan' equals total property count."
+          ],
+          "dependencies": [
+            "bg-01"
+          ]
+        },
+        {
+          "id": "bg-05",
+          "title": "CRON health check endpoint with alerting",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "If CRON silently stops running (Vercel config change, env var issue, expired secret), users stop receiving alerts and you find out from an angry email. Unacceptable at 100k users.",
+          "solution_steps": [
+            "Create app/api/health/cron/route.ts that queries cron_runs: returns 200 if last successful scan within last 25 hours, 500 otherwise.",
+            "Register endpoint with UptimeRobot or BetterStack \u2014 ping every 5 minutes.",
+            "Configure notification to email + SMS + Slack on failure.",
+            "Add a secondary anomaly check: if total alerts sent today < 50% of 7-day moving average, alert. Prevents silent 'CRON ran but produced no output' bugs."
+          ],
+          "files_affected": [
+            "NEW: app/api/health/cron/route.ts",
+            "NEW: app/api/health/alerts-anomaly/route.ts"
+          ],
+          "verification": [
+            "Temporarily disable CRON \u2014 confirm UptimeRobot alerts within 30 minutes.",
+            "Seed anomalous data (only 1 alert today) \u2014 confirm anomaly endpoint returns 500."
+          ],
+          "dependencies": [
+            "bg-04"
+          ]
+        },
+        {
+          "id": "bg-06",
+          "title": "Daily digest mode for alerts (reduce notification fatigue and cost)",
+          "priority": "P2",
+          "effort": "M",
+          "problem": "At 100k users, per-violation alerts flood users (and your Resend/Twilio bill). A landlord with 50 properties gets 30 separate emails if CRON finds 30 new violations. They unsubscribe. You also pay per email.",
+          "solution_steps": [
+            "Add profiles.alert_mode column: 'realtime' (default for backward compat) or 'daily_digest'.",
+            "In daily_digest mode: CRON inserts violations with needs_alert=true, but send worker batches by user_id and sends ONE email per user per day listing all new violations across all properties.",
+            "Add settings UI toggle at app/settings \u2014 default new signups to daily_digest after launch.",
+            "SMS remains realtime for critical severity only (paid tier).",
+            "Track: compliance_event type='digest_sent' with counts for moat data."
+          ],
+          "files_affected": [
+            "NEW: lib/email-alerts.ts \u2014 sendDailyDigestEmail(userId, newViolations[])",
+            "NEW: supabase/migrations/NNN_alert_mode.sql",
+            "MODIFY: lib/inngest/functions/send-alert-email.ts \u2014 branch on alert_mode",
+            "MODIFY: app/settings/SettingsForm.tsx \u2014 add alert_mode toggle"
+          ],
+          "sql": "alter table profiles add column if not exists alert_mode text not null default 'realtime' check (alert_mode in ('realtime','daily_digest'));",
+          "verification": [
+            "Enable digest mode for a test user with 5 properties. Seed 10 new violations. Confirm exactly 1 email sent with all 10 listed.",
+            "Confirm realtime users still get per-property emails (no regression)."
+          ],
+          "dependencies": [
+            "bg-01",
+            "bg-03"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "database",
+      "title": "Database Schema, Indexes & Partitioning",
+      "summary": "Without these changes, every dashboard query degrades as data grows. Partitioning is required for analytics_events and score history tables that will reach 100M+ rows.",
+      "items": [
+        {
+          "id": "db-01",
+          "title": "Add all missing indexes on hot query paths",
+          "priority": "P0",
+          "effort": "XS",
+          "problem": "Multiple queries in app/dashboard/page.tsx, app/dashboard/[propertyId]/page.tsx, and cron-scan-violations.ts filter on columns without indexes. At 10M violation rows, these become full table scans. Dashboard TTFB would climb to 10+ seconds.",
+          "solution_steps": [
+            "Run all index statements in a single migration.",
+            "Use CREATE INDEX CONCURRENTLY in production to avoid table locks.",
+            "Run VACUUM ANALYZE after to update planner stats.",
+            "Verify with EXPLAIN ANALYZE on each query."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_performance_indexes.sql"
+          ],
+          "sql": "-- violations hot paths\ncreate index concurrently if not exists idx_violations_property_status on violations(property_id, violation_status);\ncreate index concurrently if not exists idx_violations_needs_alert on violations(needs_alert) where needs_alert = true;\ncreate index concurrently if not exists idx_violations_property_firstseen on violations(property_id, first_seen_at desc);\ncreate index concurrently if not exists idx_violations_user_resolution on violations(property_id, user_resolution_status) where user_resolution_status in ('open','pending_verification');\ncreate index concurrently if not exists idx_violations_external_id on violations(external_id);\ncreate index concurrently if not exists idx_violations_severity on violations(property_id, severity_classification);\n\n-- resolutions\ncreate index concurrently if not exists idx_resolutions_property on violation_resolutions(property_id);\ncreate index concurrently if not exists idx_resolutions_external_id on violation_resolutions(violation_external_id);\ncreate index concurrently if not exists idx_resolutions_user on violation_resolutions(user_id, created_at desc);\n\n-- compliance events\ncreate index concurrently if not exists idx_compliance_events_property_type_time on compliance_events(property_id, event_type, created_at desc);\ncreate index concurrently if not exists idx_compliance_events_user_time on compliance_events(user_id, created_at desc);\n\n-- analytics events\ncreate index concurrently if not exists idx_analytics_user_path_time on analytics_events(user_id, page_path, created_at desc);\ncreate index concurrently if not exists idx_analytics_type_time on analytics_events(event_type, created_at desc);\n\n-- score history\ncreate index concurrently if not exists idx_score_history_property_date on compliance_score_history(property_id, snapshot_date desc);\n\n-- reminders\ncreate index concurrently if not exists idx_reminders_active_nextrun on violation_reminders(next_reminder_at) where is_active = true;\ncreate index concurrently if not exists idx_reminders_active_deadline on violation_reminders(deadline_date) where is_active = true;\n\n-- properties\ncreate index concurrently if not exists idx_properties_user on properties(user_id);\ncreate index concurrently if not exists idx_properties_city on properties(city_id);\ncreate index concurrently if not exists idx_properties_last_scanned on properties(last_scanned_at);\ncreate index concurrently if not exists idx_properties_user_city on properties(user_id, city_id);",
+          "verification": [
+            "Run EXPLAIN ANALYZE on every SELECT in dashboard-page.tsx \u2014 must show Index Scan, never Seq Scan.",
+            "Seed 100k violations in staging. Dashboard load time should be <500ms p95.",
+            "After migration, run: select schemaname, indexrelname, idx_scan from pg_stat_user_indexes order by idx_scan desc; \u2014 confirm new indexes are being used."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "db-02",
+          "title": "Partition analytics_events, compliance_score_history, compliance_events by month",
+          "priority": "P1",
+          "effort": "L",
+          "problem": "analytics_events grows ~100M rows/year, compliance_score_history grows 76M/year, compliance_events grows ~20M/year. Without partitioning, every query against these tables slows linearly with size, and VACUUM becomes painful. Index bloat degrades writes too.",
+          "solution_steps": [
+            "Convert each table to partitioned via this pattern: create _new as partitioned, copy data in batches, rename old to _old, rename _new to original name.",
+            "Create next 3 months of partitions up-front.",
+            "Add monthly CRON job (lib/inngest/functions/rotate-partitions.ts) that creates next month's partition and drops old partitions per retention policy.",
+            "Retention policies: analytics_events 180 days (move to cold storage after); compliance_score_history 2 years (aggregate older to monthly avg); compliance_events keep forever but move >2yr to cold storage.",
+            "Use partman extension if available in Supabase (it is) \u2014 simplifies partition management dramatically."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_partition_analytics.sql",
+            "NEW: supabase/migrations/NNN_partition_score_history.sql",
+            "NEW: supabase/migrations/NNN_partition_compliance_events.sql",
+            "NEW: lib/inngest/functions/rotate-partitions.ts"
+          ],
+          "sql": "-- Example for analytics_events (similar pattern for others)\n-- Step 1: create partitioned replacement\ncreate table analytics_events_new (like analytics_events including defaults including constraints) partition by range (created_at);\n\n-- Step 2: create partitions for current + next 3 months\ncreate table analytics_events_2026_04 partition of analytics_events_new for values from ('2026-04-01') to ('2026-05-01');\ncreate table analytics_events_2026_05 partition of analytics_events_new for values from ('2026-05-01') to ('2026-06-01');\ncreate table analytics_events_2026_06 partition of analytics_events_new for values from ('2026-06-01') to ('2026-07-01');\ncreate table analytics_events_2026_07 partition of analytics_events_new for values from ('2026-07-01') to ('2026-08-01');\n\n-- Step 3: copy data (run off-hours, in batches for large tables)\ninsert into analytics_events_new select * from analytics_events;\n\n-- Step 4: verify counts match, then swap\nalter table analytics_events rename to analytics_events_old;\nalter table analytics_events_new rename to analytics_events;\n\n-- Step 5: recreate indexes on the partitioned parent\ncreate index on analytics_events(user_id, page_path, created_at desc);\ncreate index on analytics_events(event_type, created_at desc);\n\n-- Step 6 (after verifying): drop _old table\n-- drop table analytics_events_old;",
+          "verification": [
+            "Run explain on: select * from analytics_events where user_id = X and created_at > now() - interval '7 days'; \u2014 confirm partition pruning (only 1-2 child partitions scanned).",
+            "Verify row count matches pre-migration count exactly.",
+            "Run rotate-partitions CRON in staging, confirm next month's partition created.",
+            "Confirm all writes still succeed after swap."
+          ],
+          "dependencies": [
+            "db-01"
+          ],
+          "caution": "This is a disruptive migration. Do it during low-traffic window. Have rollback plan: keep _old table for 2 weeks before dropping."
+        },
+        {
+          "id": "db-03",
+          "title": "Populate property_stats table \u2014 kill the dashboard N+1",
+          "priority": "P0",
+          "effort": "M",
+          "problem": "app/dashboard/page.tsx for a Pro user with 50 properties runs 6+ queries, each fetching ALL data for ALL their properties, then aggregating in JS. At 100k users this melts the DB. The property_stats table already exists but is not being populated \u2014 this is low-hanging fruit with massive impact.",
+          "solution_steps": [
+            "Add missing columns to property_stats (see SQL).",
+            "Create lib/property-stats.ts with recomputePropertyStats(propertyId) that reads violations/resolutions/reminders, computes all metrics, upserts into property_stats.",
+            "Emit Inngest event property.stats.recompute.requested from: end of CRON scan, after resolution submission, after reminder created/cleared, after property onboarding, after property removed.",
+            "Rewrite app/dashboard/page.tsx: single query joins properties + property_stats. Remove all in-JS aggregation loops.",
+            "Keep DashboardContent.tsx filters working \u2014 filter on the single joined result set.",
+            "Add freshness fallback: if property_stats.updated_at < now() - 10 minutes, fire recompute event (background) and use stale data for this render."
+          ],
+          "files_affected": [
+            "MODIFY: supabase/migrations/NNN_property_stats_columns.sql (add missing columns)",
+            "NEW: lib/property-stats.ts (recompute function)",
+            "NEW: lib/inngest/functions/recompute-property-stats.ts (worker)",
+            "MODIFY: app/dashboard/page.tsx \u2014 strip all aggregation loops, single join on property_stats",
+            "MODIFY: app/dashboard/DashboardContent.tsx \u2014 consume stats as props, no client-side computation",
+            "MODIFY: app/dashboard/[propertyId]/actions.ts \u2014 emit event after resolution/reminder actions",
+            "MODIFY: app/api/cron/scan-violations/route.ts \u2014 emit event per scanned property",
+            "MODIFY: app/onboarding/actions.ts \u2014 emit event after property creation",
+            "MODIFY: app/dashboard/actions.ts \u2014 emit event after property removal (to clean up stats row)"
+          ],
+          "sql": "alter table property_stats\n  add column if not exists open_violations_count int not null default 0,\n  add column if not exists complaint_count int not null default 0,\n  add column if not exists pending_verification_count int not null default 0,\n  add column if not exists resolved_count int not null default 0,\n  add column if not exists spend_min numeric not null default 0,\n  add column if not exists spend_max numeric not null default 0,\n  add column if not exists current_score int check (current_score is null or (current_score between 0 and 100)),\n  add column if not exists current_grade text,\n  add column if not exists grade_color text,\n  add column if not exists overdue_count int not null default 0,\n  add column if not exists critical_count int not null default 0,\n  add column if not exists high_count int not null default 0,\n  add column if not exists moderate_count int not null default 0,\n  add column if not exists low_count int not null default 0,\n  add column if not exists admin_count int not null default 0,\n  add column if not exists updated_at timestamptz not null default now();\ncreate unique index if not exists ux_property_stats_property on property_stats(property_id);\ncreate index if not exists idx_property_stats_user on property_stats(user_id);",
+          "verification": [
+            "Load dashboard with a test account having 100 properties \u2014 confirm in Supabase query log: <3 queries against violations or violation_resolutions total.",
+            "Page TTFB drops from seconds to <200ms.",
+            "Resolve a violation, wait 5s, refresh dashboard \u2014 confirm stats updated.",
+            "Add a new violation via CRON \u2014 confirm stats row updated."
+          ],
+          "dependencies": [
+            "bg-01",
+            "db-01"
+          ],
+          "do_not_change": "Do NOT change the compliance score calculation logic in lib/compliance-score.ts. Only change WHERE the score is computed (background vs request-time). The exact same inputs and outputs must be preserved."
+        },
+        {
+          "id": "db-04",
+          "title": "Database-level data integrity constraints",
+          "priority": "P0",
+          "effort": "XS",
+          "problem": "Code-level checks can be bypassed by bugs, migrations, or manual SQL. Your moat depends on severity_classification being always set and violation_external_id being always preserved. Defense in depth via database constraints is free insurance.",
+          "solution_steps": [
+            "Run all constraint additions in one migration.",
+            "Before adding NOT NULL constraints, run a data fix pass to handle existing nulls (backfill to 'moderate' for severity).",
+            "Add CHECK constraints with reasonable bounds."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_data_integrity_constraints.sql"
+          ],
+          "sql": "-- Severity classification must always be set (moat data)\nupdate violations set severity_classification = 'moderate' where severity_classification is null;\nalter table violations alter column severity_classification set default 'moderate';\nalter table violations alter column severity_classification set not null;\nalter table violations add constraint chk_severity_valid check (severity_classification in ('critical','high','moderate','low','administrative'));\n\n-- Score history range\nalter table compliance_score_history add constraint chk_score_range check (score between 0 and 100);\nalter table compliance_score_history add constraint chk_grade_valid check (grade in ('A','B','C','D','F'));\n\n-- violation_external_id must be preserved in resolutions (moat data)\nupdate violation_resolutions set violation_external_id = (select external_id from violations where violations.id = violation_resolutions.violation_id) where violation_external_id is null;\nalter table violation_resolutions alter column violation_external_id set not null;\n\n-- Cost sanity checks (prevent typos destroying analytics)\nalter table violation_resolutions add constraint chk_exact_cost_positive check (exact_cost is null or exact_cost >= 0);\nalter table violation_resolutions add constraint chk_exact_cost_reasonable check (exact_cost is null or exact_cost <= 500000);\n\n-- Unique constraint on (property_id, external_id) to prevent duplicate violations on rescan\ncreate unique index if not exists ux_violations_property_external on violations(property_id, external_id) where external_id is not null;\n\n-- Email/phone format sanity\nalter table profiles add constraint chk_email_format check (email ~ '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');\n\n-- Plan must be one of expected values\nalter table profiles add constraint chk_plan_valid check (plan in ('free','starter','pro'));",
+          "verification": [
+            "Attempt manual insert of violation with null severity \u2014 must fail with constraint violation.",
+            "Attempt insert of resolution with negative cost \u2014 must fail.",
+            "Attempt duplicate violation (same external_id + property_id) \u2014 must fail.",
+            "Run full CRON \u2014 confirm no constraint violations in logs."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "db-05",
+          "title": "Supabase compute upgrade path",
+          "priority": "P1",
+          "effort": "XS",
+          "problem": "Default Pro plan ships with Micro compute (1GB RAM, shared vCPU). This handles ~50 concurrent users. At 1500 peak sessions, database becomes bottleneck.",
+          "solution_steps": [
+            "At ~500 users: upgrade to Small ($15/mo add-on).",
+            "At ~5000 users: upgrade to Medium ($60/mo).",
+            "At ~20000 users: upgrade to Large ($110/mo).",
+            "At ~50000 users: upgrade to XL ($210/mo) or consider read replicas (db-06).",
+            "Monitor Supabase Dashboard > Reports > Database > CPU + Connection Pool saturation.",
+            "Set Supabase Database Alerts: CPU >70% for 10 min, connection pool >80%."
+          ],
+          "files_affected": [],
+          "verification": [
+            "After each upgrade, verify p95 query latency drops in Supabase Advisors tab.",
+            "Monitor for 48h post-upgrade to ensure no regression."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "db-06",
+          "title": "Read replicas for reporting and admin queries",
+          "priority": "P2",
+          "effort": "M",
+          "problem": "Admin dashboards, internal analytics, and heavy reporting queries compete with user-facing traffic. At 50k+ users this causes lock contention on primary.",
+          "solution_steps": [
+            "Enable Supabase Read Replica (available on Pro plan $50/mo per replica).",
+            "Create lib/supabase/readreplica.ts client pointing at replica endpoint.",
+            "Route admin pages, analytics queries, and reporting to replica.",
+            "Keep writes + user-facing reads on primary.",
+            "Accept eventual consistency (typically <1s lag)."
+          ],
+          "files_affected": [
+            "NEW: lib/supabase/readreplica.ts",
+            "MODIFY: app/admin/**/*.tsx to use readreplica client",
+            "MODIFY: lib/analytics-events.ts read functions"
+          ],
+          "verification": [
+            "Load admin dashboard \u2014 confirm queries hit replica (monitor in Supabase logs).",
+            "Write new violation \u2014 confirm user dashboard (on primary) shows it immediately."
+          ],
+          "dependencies": [
+            "db-05"
+          ]
+        },
+        {
+          "id": "db-07",
+          "title": "Connection pooling via PgBouncer / Supavisor",
+          "priority": "P1",
+          "effort": "XS",
+          "problem": "Serverless functions open new connections on every invocation. At high concurrency, you exhaust Postgres max_connections (default 100 on Small compute).",
+          "solution_steps": [
+            "Use Supabase Supavisor transaction-mode pooler URL for all serverless routes. Port 6543.",
+            "Reserve session-mode pooler (port 5432) only for migrations and long-running queries.",
+            "Update NEXT_PUBLIC_SUPABASE_URL or a separate SUPABASE_POOLED_URL env var.",
+            "Verify in lib/supabase/server.ts and lib/supabase/admin.ts that all clients use the pooled connection.",
+            "Use prepared-statement-free queries (Supabase JS client already does this correctly in transaction mode)."
+          ],
+          "files_affected": [
+            "MODIFY: .env.local + Vercel env vars \u2014 add SUPABASE_DB_POOLER_URL",
+            "MODIFY: lib/supabase/admin.ts",
+            "MODIFY: lib/supabase/server.ts"
+          ],
+          "verification": [
+            "Monitor Supabase > Reports > Connection Pool \u2014 should stay <50% under load.",
+            "Load test with k6 at 1000 concurrent requests \u2014 no 'too many connections' errors."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "db-08",
+          "title": "Autovacuum tuning for high-churn tables",
+          "priority": "P2",
+          "effort": "S",
+          "problem": "violations, analytics_events, and compliance_events get many UPDATEs (status changes) and INSERTs. Default autovacuum thresholds (20% dead tuples) are too lax for write-heavy tables at scale. Bloat degrades queries.",
+          "solution_steps": [
+            "Set per-table autovacuum settings: scale_factor 0.05, analyze_scale_factor 0.02.",
+            "Schedule weekly VACUUM ANALYZE on hot tables (via Supabase SQL Editor or Inngest cron).",
+            "Monitor pg_stat_user_tables.n_dead_tup \u2014 alert if > 100k on any table."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_autovacuum_tuning.sql"
+          ],
+          "sql": "alter table violations set (autovacuum_vacuum_scale_factor = 0.05, autovacuum_analyze_scale_factor = 0.02);\nalter table analytics_events set (autovacuum_vacuum_scale_factor = 0.05, autovacuum_analyze_scale_factor = 0.02);\nalter table compliance_events set (autovacuum_vacuum_scale_factor = 0.05, autovacuum_analyze_scale_factor = 0.02);\nalter table violation_reminders set (autovacuum_vacuum_scale_factor = 0.1);",
+          "verification": [
+            "After a week, query pg_stat_user_tables \u2014 dead_tup ratio should stay <10% on these tables."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "caching-queries",
+      "title": "Caching & Query Optimization",
+      "summary": "Move hot reads off the database. Introduce pagination and caching layers.",
+      "items": [
+        {
+          "id": "cache-01",
+          "title": "Add Upstash Redis for hot-path caching",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "Dashboard and property detail pages re-fetch identical data for the same user across page navigations. Compliance scores and property_stats rarely change between CRON runs. Free-tier users hitting the same endpoints repeatedly generate unnecessary DB load.",
+          "solution_steps": [
+            "Add @upstash/redis. Free tier: 10k commands/day, enough for <2k users; paid $10/mo for 100k req/day.",
+            "Cache keys with TTLs: property_stats:{propertyId} 5min, compliance_score:{propertyId} 30min, city:list 1h, user_profile:{userId} 5min.",
+            "Invalidate on write: after resolution submit, property_stats recompute, profile update.",
+            "Use Redis for rate limiting too (see sec-01).",
+            "Never cache PII-heavy data or cross-user data \u2014 cache keys must be user-scoped."
+          ],
+          "files_affected": [
+            "NEW: lib/cache.ts (get/set/invalidate helpers with typed keys)",
+            "MODIFY: app/dashboard/page.tsx \u2014 wrap property_stats fetch with cache.getOrSet",
+            "MODIFY: app/dashboard/[propertyId]/page.tsx \u2014 cache violation list",
+            "MODIFY: lib/property-stats.ts \u2014 invalidate cache after recompute"
+          ],
+          "verification": [
+            "First dashboard load hits DB; second load within 5min hits Redis (0 DB queries on property_stats).",
+            "Resolve a violation \u2014 confirm cache invalidated and next load shows updated score."
+          ],
+          "dependencies": [
+            "db-03"
+          ]
+        },
+        {
+          "id": "cache-02",
+          "title": "Paginate violations history on property detail",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Properties with 100+ violations load everything at once in app/dashboard/[propertyId]/page.tsx. Slow render, huge payload, poor mobile UX.",
+          "solution_steps": [
+            "Default load: 25 most recent violations.",
+            "Add Load More button (server action or client pagination).",
+            "Keep 'open' violations always visible (show open list separately with all of them).",
+            "Use React Suspense to stream initial view while history loads."
+          ],
+          "files_affected": [
+            "MODIFY: app/dashboard/[propertyId]/page.tsx",
+            "MODIFY: app/dashboard/[propertyId]/PropertyDetailClient.tsx"
+          ],
+          "verification": [
+            "Seed property with 500 violations \u2014 initial load shows 25 + open. Load More fetches next 25."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "cache-03",
+          "title": "Denormalize city_slug onto properties table",
+          "priority": "P2",
+          "effort": "XS",
+          "problem": "Every dashboard query joins properties \u2192 cities for slug lookup. Tiny cost individually, meaningful at scale.",
+          "solution_steps": [
+            "Add properties.city_slug column.",
+            "Backfill from join.",
+            "Update onboarding/actions.ts to write city_slug on insert.",
+            "Update all queries to use properties.city_slug directly."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_denormalize_city_slug.sql",
+            "MODIFY: app/onboarding/actions.ts",
+            "MODIFY: all queries that currently join cities"
+          ],
+          "sql": "alter table properties add column if not exists city_slug text;\nupdate properties set city_slug = cities.slug from cities where cities.id = properties.city_id;\ncreate index if not exists idx_properties_city_slug on properties(city_slug);",
+          "verification": [
+            "EXPLAIN dashboard query \u2014 confirm no cities join.",
+            "Onboard new property \u2014 confirm city_slug populated."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "cache-04",
+          "title": "Cache city API enrichment responses (Cook County / OPA)",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Property enrichment from Cook County and OPA is slow (30s timeout) and these APIs have rate limits. Re-enriching or onboarding the same property twice within a day hits the API redundantly.",
+          "solution_steps": [
+            "Add property_details.last_enriched_at timestamp.",
+            "Before calling city API, check: if last_enriched_at > now() - 7 days, skip API call and use existing.",
+            "User can force re-enrich via button (bypasses cache).",
+            "Fallback: if API times out, use cached value if available and log a compliance_event enrichment_fallback_used."
+          ],
+          "files_affected": [
+            "MODIFY: lib/property-enrichment.ts",
+            "NEW: supabase/migrations/NNN_last_enriched_at.sql"
+          ],
+          "sql": "alter table property_details add column if not exists last_enriched_at timestamptz;",
+          "verification": [
+            "Onboard same address twice in 5 minutes \u2014 second should skip API call (check cron_runs for 'enrichment' phase count)."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "external-api",
+      "title": "External API Resilience (Socrata, Carto, Cook County, OPA, Resend, Twilio, Stripe)",
+      "summary": "At 210k properties scanned daily you will hit rate limits, transient failures, and outages constantly. Without retry + circuit breaker + fallback, each becomes a user-facing bug.",
+      "items": [
+        {
+          "id": "ext-01",
+          "title": "Register + rotate Socrata app tokens, enforce rate limits",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Chicago Socrata unauthenticated limit is ~1000 req/hour shared. With app token: 50k/hour per token. At 150k Chicago properties + rescans + address searches, you need tokens and pacing. Current code has one token \u2014 no fallback if rate-limited.",
+          "solution_steps": [
+            "Register 3 app tokens at data.cityofchicago.org (free).",
+            "Store as SOCRATA_APP_TOKEN_1, _2, _3 env vars.",
+            "Create lib/socrata-client.ts that round-robins tokens.",
+            "On 429 response, rotate to next token + exponential backoff.",
+            "Centralize all Socrata calls through this client (currently scattered).",
+            "Cap concurrency at 10 simultaneous Socrata requests globally (use Inngest throttle or Redis semaphore)."
+          ],
+          "files_affected": [
+            "NEW: lib/socrata-client.ts (token rotation + retry)",
+            "MODIFY: lib/property-enrichment.ts to use socrata-client",
+            "MODIFY: city-specific violation fetch functions"
+          ],
+          "verification": [
+            "Monitor token usage at data.cityofchicago.org admin.",
+            "Simulate 429 \u2014 confirm retry with different token succeeds.",
+            "Under sustained load, zero 429s should reach user."
+          ],
+          "dependencies": [
+            "bg-01"
+          ]
+        },
+        {
+          "id": "ext-02",
+          "title": "Carto SQL API retry + backoff wrapper",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Philadelphia Carto API has transient 500s and sometimes returns empty responses when overloaded. No current retry logic \u2014 first failure = missed data.",
+          "solution_steps": [
+            "Create lib/carto-client.ts with retry (3 attempts, 1s/3s/10s backoff).",
+            "On transient failure (5xx, timeout, empty response when rows expected): retry.",
+            "On permanent failure (4xx, bad query): do not retry, log error.",
+            "Cap concurrency at 5 simultaneous Carto requests."
+          ],
+          "files_affected": [
+            "NEW: lib/carto-client.ts",
+            "MODIFY: lib/property-enrichment.ts (Philadelphia enrichment)",
+            "MODIFY: Philadelphia violation fetch logic"
+          ],
+          "verification": [
+            "Simulate 503 response \u2014 confirm 3 retries before giving up.",
+            "Confirm successful retries are transparent to caller."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "ext-03",
+          "title": "Circuit breaker for Cook County Assessor",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Cook County API is known to be slow + unreliable. When it is down, every enrichment attempt blocks 30s and degrades onboarding UX.",
+          "solution_steps": [
+            "Implement circuit breaker (lib/circuit-breaker.ts): after 5 consecutive failures or >50% error rate over 20 requests, open circuit for 5 minutes.",
+            "While open, skip API call and use whatever data we have (don't block user).",
+            "Log compliance_event enrichment_skipped_circuit_open for moat data.",
+            "Re-enrich queue: when circuit closes, enqueue missing enrichments to run later."
+          ],
+          "files_affected": [
+            "NEW: lib/circuit-breaker.ts",
+            "MODIFY: lib/property-enrichment.ts \u2014 Cook County call wrapped in circuit breaker",
+            "NEW: lib/inngest/functions/retry-failed-enrichments.ts"
+          ],
+          "verification": [
+            "Simulate Cook County outage \u2014 onboarding should still complete (property created with basic data, enrichment deferred).",
+            "Confirm enrichment retried when circuit closes."
+          ],
+          "dependencies": [
+            "bg-01"
+          ]
+        },
+        {
+          "id": "ext-04",
+          "title": "Resend webhook handler (bounces, complaints, unsubscribes)",
+          "priority": "P0",
+          "effort": "M",
+          "problem": "When emails bounce or users mark as spam, Resend tells you via webhook. Currently no handler \u2014 your sender reputation degrades invisibly, and you keep sending to invalid addresses (waste + eventual block).",
+          "solution_steps": [
+            "Create app/api/webhooks/resend/route.ts. Verify signature with RESEND_WEBHOOK_SECRET.",
+            "Handle events: email.bounced, email.complained, email.delivery_delayed.",
+            "On bounce: mark profile.email_bounced=true and stop sending (log compliance_event).",
+            "On complaint (marked as spam): mark profile.email_suppressed=true and unsubscribe ALL channels.",
+            "Add email_suppressions table for audit trail.",
+            "Register webhook URL in Resend dashboard."
+          ],
+          "files_affected": [
+            "NEW: app/api/webhooks/resend/route.ts",
+            "NEW: supabase/migrations/NNN_email_suppression.sql",
+            "MODIFY: lib/email-alerts.ts \u2014 check suppression before sending"
+          ],
+          "sql": "alter table profiles add column if not exists email_bounced boolean not null default false;\nalter table profiles add column if not exists email_suppressed boolean not null default false;\ncreate table email_suppressions (\n  id uuid primary key default gen_random_uuid(),\n  email text not null,\n  reason text not null check (reason in ('bounce','complaint','manual','unsubscribe')),\n  event_data jsonb,\n  created_at timestamptz not null default now()\n);\ncreate unique index ux_email_suppressions_email on email_suppressions(email);",
+          "verification": [
+            "Use Resend test bounce \u2014 confirm webhook fires, profile marked, future sends to that email skipped.",
+            "Verify webhook signature \u2014 reject unsigned requests with 401."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "ext-05",
+          "title": "Twilio webhook + STOP/HELP handling (legally required)",
+          "priority": "P0",
+          "effort": "M",
+          "problem": "US SMS regulations (CTIA) REQUIRE that users can text STOP to unsubscribe. If you don't handle this you can be fined and Twilio will suspend your account.",
+          "solution_steps": [
+            "Create app/api/webhooks/twilio/route.ts for inbound SMS.",
+            "Parse body: if STOP \u2192 mark profile.sms_suppressed=true and respond with confirmation.",
+            "If HELP \u2192 respond with help message and support contact.",
+            "If START \u2192 reactivate SMS (after prior STOP).",
+            "Register webhook in Twilio console as the SMS URL for your phone number.",
+            "Register delivery status webhook separately \u2014 track deliveries in alert_sends.external_status.",
+            "Complete A2P 10DLC registration (required for US SMS, ~$4/mo + vetting)."
+          ],
+          "files_affected": [
+            "NEW: app/api/webhooks/twilio/route.ts",
+            "NEW: supabase/migrations/NNN_sms_suppression.sql",
+            "MODIFY: lib/sms-alerts.ts \u2014 check suppression before sending"
+          ],
+          "sql": "alter table profiles add column if not exists sms_suppressed boolean not null default false;\nalter table profiles add column if not exists sms_suppressed_at timestamptz;",
+          "verification": [
+            "Text STOP from a verified number \u2014 confirm profile flagged and reply received.",
+            "Attempt to send SMS to suppressed profile \u2014 confirm skipped with log."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "ext-06",
+          "title": "Stripe webhook hardening: idempotency + replay-safe",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Stripe webhooks can be delivered multiple times. If you upgrade a user's plan twice or charge them twice on a single event = refund + churn. Signature must always be verified.",
+          "solution_steps": [
+            "Verify stripe-signature header on every request (you should already be doing this \u2014 double-check).",
+            "Create stripe_webhook_events table. Before processing, insert event.id with on-conflict-do-nothing. If conflict \u2192 already processed, return 200 immediately.",
+            "Process only after successful insert.",
+            "Log every event regardless of type for audit.",
+            "Return 200 OK only after state committed. Return 500 on failure so Stripe retries."
+          ],
+          "files_affected": [
+            "MODIFY: app/api/webhooks/stripe/route.ts",
+            "NEW: supabase/migrations/NNN_stripe_webhook_events.sql"
+          ],
+          "sql": "create table stripe_webhook_events (\n  event_id text primary key,\n  event_type text not null,\n  processed_at timestamptz not null default now(),\n  payload jsonb\n);",
+          "verification": [
+            "Replay a Stripe event manually via CLI \u2014 confirm second delivery is no-op.",
+            "Invalid signature \u2014 confirm 401."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "ext-07",
+          "title": "Global timeout + retry policy for all outbound HTTP",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Inconsistent timeouts across the codebase (Cook County is 30s, others are default 5min). A slow external call can tie up a function until Vercel kills it.",
+          "solution_steps": [
+            "Create lib/http-client.ts: default 15s timeout, 2 retries with jitter for idempotent GET, 0 retries for POST unless explicitly opted in.",
+            "Use AbortController for cancellation.",
+            "Replace all bare fetch() with this helper in external API calls.",
+            "Log every outbound request duration to cron_runs (phase='external_http')."
+          ],
+          "files_affected": [
+            "NEW: lib/http-client.ts",
+            "MODIFY: lib/property-enrichment.ts, lib/socrata-client.ts, lib/carto-client.ts"
+          ],
+          "verification": [
+            "Mock a hanging endpoint \u2014 confirm request aborts at 15s, not 5min."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "Security, Auth, Rate Limiting & Abuse Protection",
+      "summary": "At scale, you become a target. Bots, scrapers, and abuse attempts against auth and address search will be constant. You must rate-limit and harden all public endpoints.",
+      "items": [
+        {
+          "id": "sec-01",
+          "title": "Rate limit magic link auth endpoint",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Supabase magic link endpoint can be hit repeatedly to spam users' inboxes or probe for registered emails. Default Supabase rate limits are permissive.",
+          "solution_steps": [
+            "Front the /login (or magic-link request) route with Upstash Ratelimit middleware: 3 requests per 10 min per IP, 5 per hour per email.",
+            "Return 429 with Retry-After header.",
+            "Log rate-limit hits to compliance_events for abuse monitoring."
+          ],
+          "files_affected": [
+            "NEW: lib/ratelimit.ts (Upstash Ratelimit configuration)",
+            "MODIFY: middleware.ts (apply to auth routes)",
+            "MODIFY: app/login/actions.ts if magic link sent server-side"
+          ],
+          "verification": [
+            "Hit login endpoint 10 times in 1 minute from same IP \u2014 confirm 429 from 4th request.",
+            "Monitor logs \u2014 confirm rate limit events recorded."
+          ],
+          "dependencies": [
+            "cache-01"
+          ]
+        },
+        {
+          "id": "sec-02",
+          "title": "Rate limit address search and other public endpoints",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "/api/address-search hits Socrata/Carto without auth (needed for onboarding). Scrapers can use it to mirror city databases via your quota.",
+          "solution_steps": [
+            "Rate limit by IP: 30 searches per minute, 500 per day.",
+            "Rate limit by user (if authenticated): 200 per day.",
+            "Apply same to /api/analytics (anyone can POST events) \u2014 100/min/IP.",
+            "Also apply to onboarding property-add: max 10 properties/user/day (prevents abuse + surprise costs)."
+          ],
+          "files_affected": [
+            "MODIFY: middleware.ts",
+            "MODIFY: app/api/address-search/route.ts",
+            "MODIFY: app/api/analytics/route.ts",
+            "MODIFY: app/onboarding/actions.ts"
+          ],
+          "verification": [
+            "Script that hits address-search 100 times from one IP \u2014 confirm rate limited.",
+            "Legit onboarding flow still works."
+          ],
+          "dependencies": [
+            "cache-01"
+          ]
+        },
+        {
+          "id": "sec-03",
+          "title": "Full RLS audit at scale",
+          "priority": "P0",
+          "effort": "M",
+          "problem": "RLS was verified for user-owned tables. But at scale, any gap = massive data leak. A single bad policy on failed_alerts, alert_sends, cron_runs, property_stats, compliance_score_history could expose everyone's data.",
+          "solution_steps": [
+            "List every table: run select tablename, rowsecurity from pg_tables where schemaname='public'. Confirm rowsecurity=true on ALL user-scoped tables.",
+            "For each table, document: policies, service role access, anon access.",
+            "Use Supabase Advisors > Security \u2014 resolve every warning.",
+            "Add RLS policies to newly created tables (failed_alerts, alert_sends, cron_runs, stripe_webhook_events, email_suppressions).",
+            "Write automated test: create two users, verify User B cannot see any of User A's data via Supabase client (anon+authenticated).",
+            "Add to CI: linter check that every table in migrations has 'enable row level security' or an explicit 'disable_rls' comment."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_rls_policies_new_tables.sql",
+            "NEW: tests/security/rls.test.ts",
+            "NEW: scripts/audit-rls.ts (CI job)"
+          ],
+          "sql": "-- Pattern for each new user-scoped table\nalter table failed_alerts enable row level security;\ncreate policy \"users see own failed alerts\" on failed_alerts for select using (user_id = auth.uid());\n\nalter table alert_sends enable row level security;\ncreate policy \"users see own alert sends\" on alert_sends for select using (user_id = auth.uid());\n\nalter table property_stats enable row level security;\ncreate policy \"users see own property stats\" on property_stats for select using (user_id = auth.uid());\n-- Repeat for all new tables\n-- Service role bypasses RLS; no explicit policy needed.",
+          "verification": [
+            "Run automated RLS test: User B attempts SELECT from every table while authenticated \u2014 zero rows of User A data returned.",
+            "CI check passes."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "sec-04",
+          "title": "Service role key usage audit + rotation policy",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Service role key bypasses RLS. If it leaks = full database read/write. Every usage must be scoped and logged.",
+          "solution_steps": [
+            "Grep codebase: rg 'createClient.*SERVICE_ROLE' \u2014 confirm every use is server-only (never in client code or public API routes without auth guard).",
+            "Ensure lib/supabase/admin.ts is ONLY imported from /app/api/cron/*, /lib/inngest/*, and admin-only server actions.",
+            "Rotate service role key quarterly via Supabase dashboard.",
+            "Document rotation procedure in runbook.",
+            "Consider Supabase JWT with custom scopes for less-privileged admin operations (future)."
+          ],
+          "files_affected": [
+            "AUDIT: every file importing lib/supabase/admin.ts",
+            "NEW: docs/runbooks/rotate-service-key.md"
+          ],
+          "verification": [
+            "grep output shows zero admin client imports in client components.",
+            "Key rotation tested in staging."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "sec-05",
+          "title": "Add security headers and CSP",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Missing headers (CSP, HSTS, X-Frame-Options) leave you vulnerable to clickjacking, XSS, downgrade attacks. Browsers increasingly penalize missing CSP in SEO.",
+          "solution_steps": [
+            "Add next.config.js headers: Strict-Transport-Security, X-Frame-Options=DENY, X-Content-Type-Options=nosniff, Referrer-Policy=strict-origin-when-cross-origin, Permissions-Policy.",
+            "Add Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; frame-src https://js.stripe.com; connect-src 'self' https://*.supabase.co; img-src 'self' data:;",
+            "Test every page \u2014 adjust CSP until no blocked resources.",
+            "Validate with securityheaders.com \u2014 target A+ grade."
+          ],
+          "files_affected": [
+            "MODIFY: next.config.js"
+          ],
+          "verification": [
+            "curl -I casalerts.com | grep -i 'strict-transport\\|content-security' \u2014 confirms present.",
+            "securityheaders.com scan returns A+."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "sec-06",
+          "title": "CSRF protection verification on all server actions",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Next.js 14 server actions default to same-origin only, but if any action is exposed via custom API route or accepts cross-origin, CSRF is possible.",
+          "solution_steps": [
+            "Verify all mutations go through server actions (not custom POST routes without CSRF).",
+            "For any custom POST route (e.g. webhooks), verify origin or signature.",
+            "Reject any mutation from Origin !== casalerts.com unless explicitly allowlisted."
+          ],
+          "files_affected": [
+            "AUDIT: app/api/**/route.ts (POST handlers)",
+            "MODIFY: middleware.ts \u2014 add origin check"
+          ],
+          "verification": [
+            "Attempt cross-origin POST to server action \u2014 confirm 403."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "sec-07",
+          "title": "PII minimization and encryption at rest review",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "You collect email, phone, property addresses, resolution data (may include contractor contact info). Supabase encrypts at rest via AWS. But you need to verify and document for future SOC 2 / enterprise sales.",
+          "solution_steps": [
+            "Confirm Supabase tier includes at-rest encryption (Pro does).",
+            "Review what fields truly need to be stored \u2014 drop any that don't (e.g., do you need full phone or just last 4?).",
+            "For contractor phone numbers in resolutions: consider hashing or partial storage.",
+            "Document retention policy: inactive accounts deleted after 12 months of inactivity (or per user GDPR request).",
+            "Add profiles.deletion_requested_at and background worker to process."
+          ],
+          "files_affected": [
+            "NEW: lib/inngest/functions/process-deletion-requests.ts",
+            "NEW: supabase/migrations/NNN_deletion_tracking.sql"
+          ],
+          "verification": [
+            "Submit deletion request via UI \u2014 confirm full cascade deletion within 30 days."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "sec-08",
+          "title": "WAF / bot protection at the edge",
+          "priority": "P2",
+          "effort": "S",
+          "problem": "Scrapers, credential stuffing, and DDoS attempts increase with traffic. Vercel provides basic DDoS but not full WAF.",
+          "solution_steps": [
+            "Option A (simplest): Enable Vercel Pro Web Application Firewall (~$10/mo).",
+            "Option B: Front with Cloudflare (free tier) \u2014 bot management, WAF rules, caching.",
+            "Configure rules: block known-bad bot signatures, challenge suspicious patterns, geo-restrict admin routes to your IPs.",
+            "Monitor Vercel/Cloudflare logs weekly for anomalies."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Attempt common scan patterns (sqlmap signatures) \u2014 confirm blocked.",
+            "Load test continues to work at legitimate volumes."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "input-validation",
+      "title": "Input Validation & Error Handling",
+      "summary": "Every server action and API route must validate inputs before touching the database. Currently inconsistent \u2014 some routes trust client data.",
+      "items": [
+        {
+          "id": "val-01",
+          "title": "Zod schemas on every server action and API route",
+          "priority": "P0",
+          "effort": "M",
+          "problem": "Untrusted input reaching DB/enrichment logic can cause crashes, data corruption, or security issues. Even a stray null or oversized string can break downstream.",
+          "solution_steps": [
+            "Add zod package (if not present).",
+            "Create lib/schemas/ directory with one file per entity: property.ts, resolution.ts, profile.ts, questionnaire.ts, reminder.ts.",
+            "In each server action (app/**/actions.ts) and API route: parse input with schema.parse() at top, return typed error on validation failure.",
+            "Client forms should use matching schemas via react-hook-form + @hookform/resolvers/zod.",
+            "Define strict bounds: address max 200 chars, nickname max 80, cost max 500000, phone E.164 format, email RFC-compliant."
+          ],
+          "files_affected": [
+            "NEW: lib/schemas/property.ts, lib/schemas/resolution.ts, lib/schemas/profile.ts, lib/schemas/questionnaire.ts, lib/schemas/reminder.ts",
+            "MODIFY: every file in app/**/actions.ts",
+            "MODIFY: every file in app/api/**/route.ts"
+          ],
+          "verification": [
+            "Unit test each schema with valid + invalid inputs.",
+            "Attempt POST with oversized address (1000 chars) \u2014 confirm 400.",
+            "Attempt negative cost \u2014 confirm 400."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "val-02",
+          "title": "Address normalization before lookup",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "'1234 W Madison' and '1234 w madison st' and '1234 WEST MADISON' refer to same property but match differently against city APIs. Silent data duplication.",
+          "solution_steps": [
+            "Create lib/address-normalizer.ts: uppercase, strip periods, standardize direction abbreviations (N/S/E/W), strip suffix variations (St/Street, Ave/Avenue).",
+            "Apply in onboarding before fetching violations.",
+            "Store normalized_address column on properties.",
+            "Add unique constraint on (user_id, normalized_address) to prevent duplicates."
+          ],
+          "files_affected": [
+            "NEW: lib/address-normalizer.ts",
+            "NEW: supabase/migrations/NNN_normalized_address.sql",
+            "MODIFY: app/onboarding/actions.ts"
+          ],
+          "sql": "alter table properties add column if not exists normalized_address text;\ncreate unique index if not exists ux_properties_user_normalized_address on properties(user_id, normalized_address) where normalized_address is not null;",
+          "verification": [
+            "Onboard '1234 W Madison' then '1234 west madison st' \u2014 second should detect duplicate."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "val-03",
+          "title": "Standardized API error response shape",
+          "priority": "P2",
+          "effort": "S",
+          "problem": "Different routes return errors in different shapes. Client code cannot uniformly handle them.",
+          "solution_steps": [
+            "Define: { ok: false, error: { code: string, message: string, details?: any } }.",
+            "Define: { ok: true, data: T }.",
+            "Create lib/api-response.ts with apiOk / apiErr helpers.",
+            "Migrate all API routes to this shape."
+          ],
+          "files_affected": [
+            "NEW: lib/api-response.ts",
+            "MODIFY: all app/api/**/route.ts"
+          ],
+          "verification": [
+            "Every API route returns consistent shape."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "observability",
+      "title": "Observability, Monitoring & Alerting",
+      "summary": "You cannot manage what you cannot measure. At 100k users, silent failures become expensive. Invest in visibility now.",
+      "items": [
+        {
+          "id": "obs-01",
+          "title": "Install Sentry for runtime error tracking",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Unhandled exceptions currently go to console.error \u2014 lost unless you're watching Vercel logs. A single null reference in a hot path could affect thousands of users before you notice.",
+          "solution_steps": [
+            "Sign up for Sentry free tier (5k events/month). Upgrade to Team ($26/mo) at 50k users.",
+            "Install @sentry/nextjs, run wizard.",
+            "Configure sentry.client.config.ts, sentry.server.config.ts, sentry.edge.config.ts.",
+            "Set tracesSampleRate: 0.1 (sample 10% traces to control cost), errorsSampleRate: 1.0.",
+            "Tag every scope with user.id (from Supabase auth) for correlation.",
+            "Mask PII: filter out email/phone from breadcrumbs.",
+            "Configure Slack/email alerts for new error types, error rate spikes."
+          ],
+          "files_affected": [
+            "NEW: sentry.client.config.ts, sentry.server.config.ts, sentry.edge.config.ts",
+            "MODIFY: next.config.js (wrap with withSentryConfig)",
+            "MODIFY: instrumentation.ts"
+          ],
+          "verification": [
+            "Throw a test error \u2014 confirm shows in Sentry dashboard within 30s.",
+            "Verify PII not leaked in Sentry event."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "obs-02",
+          "title": "Structured JSON logging with correlation IDs",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "console.log scattered across codebase \u2014 no structure, no way to filter or join logs for a given user action spanning multiple functions.",
+          "solution_steps": [
+            "Create lib/logger.ts using pino (fast, JSON-native).",
+            "Every log includes: timestamp, level, msg, requestId, userId, route, duration_ms.",
+            "Generate requestId in middleware.ts (random UUID) \u2014 pass via AsyncLocalStorage or via header to downstream.",
+            "Replace all console.log in lib/ and app/api/ with logger.info / logger.error.",
+            "Ship to Vercel Log Drains \u2192 Axiom or Datadog (free/cheap tier) for searchable logs."
+          ],
+          "files_affected": [
+            "NEW: lib/logger.ts",
+            "MODIFY: middleware.ts (requestId)",
+            "MODIFY: every file using console.log in lib/ and app/api/"
+          ],
+          "verification": [
+            "A single user action generates logs with consistent requestId across multiple functions.",
+            "Can search Axiom for 'userId=X' and see full session trace."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "obs-03",
+          "title": "Uptime monitoring (BetterStack / UptimeRobot)",
+          "priority": "P0",
+          "effort": "XS",
+          "problem": "If casalerts.com goes down or CRON stops, you need to know in minutes, not hours.",
+          "solution_steps": [
+            "BetterStack free tier: 10 monitors, 3-min interval.",
+            "Monitor: homepage (GET /, expect 200), app login (GET /login, 200), CRON health (GET /api/health/cron, 200), webhook endpoints.",
+            "Alert via SMS + email to founder cell on any failure >2 intervals.",
+            "Public status page at status.casalerts.com (BetterStack auto-generates)."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Take staging offline \u2014 alert fires in <6 min."
+          ],
+          "dependencies": [
+            "bg-05"
+          ]
+        },
+        {
+          "id": "obs-04",
+          "title": "Business metrics dashboard (signup funnel, alert volume, CRON health)",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "You cannot run a SaaS without visibility into: daily signups, daily paid conversions, MRR, churn, alerts sent, CRON success rate, data freshness SLO.",
+          "solution_steps": [
+            "Build app/admin/dashboard/page.tsx (protected by admin role).",
+            "Show: 7-day signups chart, 7-day paid conversions, current MRR, 24h alerts sent, last CRON run status, % properties scanned in last 25h (freshness SLO), failed_alerts count, open violations per tier.",
+            "Use read replica (db-06) for these queries.",
+            "Optional: ship to PostHog or Mixpanel for richer analytics."
+          ],
+          "files_affected": [
+            "NEW: app/admin/dashboard/page.tsx",
+            "NEW: lib/admin-metrics.ts"
+          ],
+          "verification": [
+            "Dashboard loads in <2s.",
+            "Numbers match manual SQL queries against DB."
+          ],
+          "dependencies": [
+            "db-06"
+          ]
+        },
+        {
+          "id": "obs-05",
+          "title": "Anomaly detection on alert volume",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "If CRON runs but produces 0 alerts for 24h, that's broken (very likely a bug in classification or scanning). Without automated anomaly detection you might not notice for a week.",
+          "solution_steps": [
+            "Add hourly Inngest cron: query alert_sends count for last hour.",
+            "Compare to 7-day rolling average for same hour-of-day.",
+            "If < 20% of average \u2192 fire Sentry alert + email founder.",
+            "Similarly: alert if error rate in sentry exceeds 1% of requests."
+          ],
+          "files_affected": [
+            "NEW: lib/inngest/functions/alert-volume-anomaly.ts"
+          ],
+          "verification": [
+            "Seed scenario with 0 alerts \u2014 confirm anomaly alert fires."
+          ],
+          "dependencies": [
+            "bg-01",
+            "obs-01"
+          ]
+        },
+        {
+          "id": "obs-06",
+          "title": "Vercel deployment notifications",
+          "priority": "P2",
+          "effort": "XS",
+          "problem": "Failed or unexpected deploys go unnoticed. A bad deploy at 2am ruins the next day.",
+          "solution_steps": [
+            "Vercel Settings > Integrations > Slack (or email).",
+            "Notify on: deploy started, deploy succeeded, deploy failed.",
+            "Also notify on preview deploys if you merge frequently."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Trigger a deploy \u2014 confirm Slack/email notification."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "data-integrity",
+      "title": "Data Integrity Checks & Auto-Remediation",
+      "summary": "Your competitive moat is the data. Silent corruption or missing fields destroy that moat. Active checks + auto-remediation.",
+      "items": [
+        {
+          "id": "int-01",
+          "title": "Weekly data integrity check job",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Without active monitoring, you discover data issues weeks or months later when analytics queries fail or users complain.",
+          "solution_steps": [
+            "Create lib/inngest/functions/data-integrity-check.ts running weekly (Sundays 3am UTC).",
+            "Checks: violations with null severity, properties with null zip/lat/lng where expected, resolutions with null violation_external_id, orphaned rows (violations referencing deleted properties), compliance_score_history gaps (>2 day skips per property), property_stats staleness (>24h old).",
+            "For each issue found: email founder + insert into data_integrity_issues table for tracking.",
+            "Auto-remediate what's safe: backfill severity using lib/compliance-score.getViolationSeverity(); trigger re-enrich for missing geo."
+          ],
+          "files_affected": [
+            "NEW: lib/inngest/functions/data-integrity-check.ts",
+            "NEW: supabase/migrations/NNN_data_integrity_issues.sql"
+          ],
+          "sql": "create table data_integrity_issues (\n  id uuid primary key default gen_random_uuid(),\n  check_name text not null,\n  entity_type text not null,\n  entity_id uuid,\n  details jsonb,\n  detected_at timestamptz not null default now(),\n  remediated_at timestamptz,\n  remediation_type text\n);\ncreate index idx_data_integrity_open on data_integrity_issues(check_name) where remediated_at is null;",
+          "verification": [
+            "Manually null a severity column \u2014 run check \u2014 confirm issue logged and auto-remediated within the same run."
+          ],
+          "dependencies": [
+            "bg-01"
+          ]
+        },
+        {
+          "id": "int-02",
+          "title": "Trigger-based severity backfill at insert",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Even with NOT NULL constraint, if a code path forgets to set severity, insert fails. Better to auto-classify at DB level if missing.",
+          "solution_steps": [
+            "Create severity classification function in plpgsql mirroring lib/compliance-score.getViolationSeverity.",
+            "BEFORE INSERT trigger: if severity_classification is null, call classifier.",
+            "Keep application-level code setting explicitly as primary \u2014 trigger is backup.",
+            "Document: must update both Postgres function AND TypeScript function when keyword list changes."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_severity_trigger.sql"
+          ],
+          "verification": [
+            "Manually insert violation with severity=null \u2014 confirm classified correctly by trigger."
+          ],
+          "dependencies": [
+            "db-04"
+          ]
+        },
+        {
+          "id": "int-03",
+          "title": "Resolution data preservation audit",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "The most valuable data is resolutions (cost, contractor, rating). A rescan where external_id changes could orphan resolutions. A cascading delete could wipe them silently.",
+          "solution_steps": [
+            "Audit all FOREIGN KEY constraints on violation_resolutions. Confirm on-delete behavior: violation_id -> SET NULL (not CASCADE), property_id -> SET NULL, user_id -> CASCADE only if user account deleted.",
+            "Create backup trigger: on delete from violations or properties, copy any linked resolutions to archived_resolutions.",
+            "Weekly check: count resolutions with both violation_id=null AND violation_external_id=null \u2014 these are unlinked and bad. Alert immediately."
+          ],
+          "files_affected": [
+            "NEW: supabase/migrations/NNN_archive_resolutions.sql"
+          ],
+          "sql": "create table archived_resolutions (like violation_resolutions including all);\nalter table archived_resolutions add column archived_at timestamptz not null default now();\nalter table archived_resolutions add column archive_reason text;\n\ncreate or replace function archive_resolutions_on_violation_delete() returns trigger as $$\nbegin\n  insert into archived_resolutions select *, now(), 'violation_deleted' from violation_resolutions where violation_id = old.id;\n  return old;\nend; $$ language plpgsql;\n\ncreate trigger trg_archive_resolutions before delete on violations\n  for each row execute function archive_resolutions_on_violation_delete();",
+          "verification": [
+            "Delete a violation with a resolution \u2014 confirm resolution archived.",
+            "Audit FKs: select conname, confdeltype from pg_constraint where conrelid='violation_resolutions'::regclass;"
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "backups-dr",
+      "title": "Backups & Disaster Recovery",
+      "summary": "Assume everything will eventually fail. You need recovery paths tested before disaster, not during.",
+      "items": [
+        {
+          "id": "dr-01",
+          "title": "Enable Supabase PITR + verify daily backups",
+          "priority": "P0",
+          "effort": "XS",
+          "problem": "Pro plan includes daily backups but you must verify they're enabled and working. PITR (Point-In-Time Recovery) is an add-on that lets you restore to any second in the last 7 days.",
+          "solution_steps": [
+            "Supabase Dashboard > Project > Database > Backups. Confirm daily backups running (view last 7 days).",
+            "Enable PITR add-on (~$100/mo, recommended at 20k+ users).",
+            "Document recovery SLAs: RPO (recovery point) = 24h without PITR, 1 min with PITR. RTO (recovery time) = 2-4h to restore."
+          ],
+          "files_affected": [
+            "NEW: docs/runbooks/database-restore.md"
+          ],
+          "verification": [
+            "View 7 consecutive daily backup rows in Supabase dashboard.",
+            "Open a support ticket with Supabase to simulate PITR restore (they can guide test)."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "dr-02",
+          "title": "Weekly off-site pg_dump to S3",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Supabase controls its own backups. If Supabase has an incident, you want an independent copy you control.",
+          "solution_steps": [
+            "GitHub Actions workflow: weekly pg_dump of production DB, encrypt, upload to AWS S3 (or Cloudflare R2 \u2014 cheaper).",
+            "Retention: keep last 12 weekly dumps.",
+            "Encrypt with GPG using a key stored in 1Password (not in repo).",
+            "Test restore of a weekly dump to a fresh Supabase project quarterly."
+          ],
+          "files_affected": [
+            "NEW: .github/workflows/weekly-backup.yml",
+            "NEW: docs/runbooks/offsite-restore.md"
+          ],
+          "verification": [
+            "First run completes and uploads ~100MB file to S3.",
+            "Quarterly test restore succeeds."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "dr-03",
+          "title": "Document + test full disaster recovery runbook",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "In an incident you don't want to be googling 'how to restore Postgres'. Need step-by-step runbook tested before crisis.",
+          "solution_steps": [
+            "Document scenarios: total DB loss, accidental DROP TABLE, corrupted migration, Supabase region outage.",
+            "For each: recovery steps, estimated time, communication plan.",
+            "Schedule game day: each quarter, pick a scenario and run through it end-to-end in staging.",
+            "Keep runbook in docs/runbooks/ in repo (version controlled)."
+          ],
+          "files_affected": [
+            "NEW: docs/runbooks/disaster-scenarios.md"
+          ],
+          "verification": [
+            "First game day completes successfully \u2014 staging restored to known-good state."
+          ],
+          "dependencies": [
+            "dr-01",
+            "dr-02"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "testing-ci",
+      "title": "Testing, CI/CD & Deployment Safety",
+      "summary": "Every deploy at 100k users is a potential outage. Invest in automated safety.",
+      "items": [
+        {
+          "id": "test-01",
+          "title": "Set up staging environment with separate Supabase project",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Testing migrations and code changes against production data is reckless. One bad migration = corrupted data for 100k users.",
+          "solution_steps": [
+            "Create second Supabase project (staging): Free tier works for low-traffic testing.",
+            "Mirror schema via Supabase CLI: supabase db dump -> supabase db reset in staging.",
+            "Seed staging with anonymized production-scale data (see test-02).",
+            "Vercel: configure Preview deployments to use staging Supabase env vars.",
+            "All migrations run in staging first for 24h before production."
+          ],
+          "files_affected": [
+            "NEW: .env.staging.example",
+            "NEW: scripts/promote-migration.sh",
+            "MODIFY: Vercel env vars (add staging branch)"
+          ],
+          "verification": [
+            "Deploy a PR to preview \u2014 hits staging DB, not production.",
+            "Migration runs successfully in staging."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "test-02",
+          "title": "Seed script for realistic staging data at scale",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "Testing at 10 records doesn't expose query performance issues. You need staging seeded with 100k-scale data.",
+          "solution_steps": [
+            "scripts/seed-staging.ts: generate 10k test users, 30k properties, 100k violations, 10k resolutions with realistic distributions.",
+            "Use faker.js for realistic names/addresses. Anonymize any production samples.",
+            "Never copy production PII to staging.",
+            "Run seed after each staging reset."
+          ],
+          "files_affected": [
+            "NEW: scripts/seed-staging.ts"
+          ],
+          "verification": [
+            "After seed: staging has expected row counts. Dashboard loads realistically."
+          ],
+          "dependencies": [
+            "test-01"
+          ]
+        },
+        {
+          "id": "test-03",
+          "title": "Unit tests for critical lib functions",
+          "priority": "P0",
+          "effort": "M",
+          "problem": "Compliance score, severity classification, and risk briefing are the core IP. A regression here = silently wrong data across entire platform.",
+          "solution_steps": [
+            "Install vitest.",
+            "Test first: lib/compliance-score.ts (getViolationSeverity, calculateComplianceScore) \u2014 30+ test cases covering all severity keywords.",
+            "Test: lib/compliance-events.ts, lib/risk-briefing.ts, lib/property-enrichment.ts (with mocked HTTP).",
+            "Test: lib/alert-idempotency.ts.",
+            "Target >80% coverage on lib/.",
+            "Run on every PR."
+          ],
+          "files_affected": [
+            "NEW: vitest.config.ts",
+            "NEW: lib/compliance-score.test.ts and many more"
+          ],
+          "verification": [
+            "npm test \u2014 all pass.",
+            "Coverage report shows >80% on lib/."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "test-04",
+          "title": "Playwright E2E tests for critical flows",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "Onboarding, resolution submission, and billing are the revenue-critical flows. Regressions = lost revenue.",
+          "solution_steps": [
+            "Install @playwright/test.",
+            "Tests: signup via magic link (use mailosaur), onboarding happy path, resolution submission with all fields, Stripe checkout (test mode), settings changes.",
+            "Run against staging on every PR.",
+            "Include a smoke test that runs post-production-deploy."
+          ],
+          "files_affected": [
+            "NEW: playwright.config.ts",
+            "NEW: tests/e2e/*.spec.ts"
+          ],
+          "verification": [
+            "All E2E tests pass in staging."
+          ],
+          "dependencies": [
+            "test-01"
+          ]
+        },
+        {
+          "id": "test-05",
+          "title": "GitHub Actions CI pipeline",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Without CI, bad code reaches production.",
+          "solution_steps": [
+            "Workflow on PR: lint (eslint), type-check (tsc --noEmit), unit tests (vitest), migration lint (check RLS on new tables).",
+            "Workflow on merge to main: full E2E against staging, then auto-deploy preview, wait for manual promote to production.",
+            "Block merges with failing checks."
+          ],
+          "files_affected": [
+            "NEW: .github/workflows/ci.yml",
+            "NEW: .github/workflows/deploy.yml"
+          ],
+          "verification": [
+            "Submit PR with type error \u2014 blocked.",
+            "Pass checks \u2014 merge allowed, deploys to preview."
+          ],
+          "dependencies": [
+            "test-03",
+            "test-04"
+          ]
+        },
+        {
+          "id": "test-06",
+          "title": "Database migration workflow (Supabase CLI)",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Editing schema via Supabase dashboard means your schema is not in version control. At scale this is chaos.",
+          "solution_steps": [
+            "All schema changes via supabase migration new <name> + supabase db push.",
+            "Migrations committed to repo under supabase/migrations/.",
+            "Never edit Supabase dashboard schema directly in production \u2014 always PR + migration.",
+            "Document migration review checklist: RLS on new tables, indexes on new columns, reversible, tested in staging first."
+          ],
+          "files_affected": [
+            "NEW: docs/migration-workflow.md"
+          ],
+          "verification": [
+            "All future schema changes in migrations only."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "test-07",
+          "title": "Feature flags (PostHog or Vercel Edge Config)",
+          "priority": "P2",
+          "effort": "S",
+          "problem": "Rolling out risky features all-at-once at 100k users is dangerous. Need ability to gradually enable or kill features without deploy.",
+          "solution_steps": [
+            "Integrate PostHog feature flags (free tier covers this).",
+            "Wrap risky new features: if (await flagEnabled('alert_mode_daily_digest', userId)) { ... }.",
+            "Rollout: 1% \u2192 10% \u2192 50% \u2192 100% with monitoring in between.",
+            "Kill switch: flip to 0% instantly on issue."
+          ],
+          "files_affected": [
+            "NEW: lib/feature-flags.ts"
+          ],
+          "verification": [
+            "Flag enabled for specific user, disabled for others."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "legal-compliance",
+      "title": "Legal & Regulatory Compliance",
+      "summary": "As a UK Ltd with US users and US data, you have GDPR, CCPA, CAN-SPAM, CASL, and CTIA obligations. Non-compliance at scale = fines + enterprise deals blocked.",
+      "items": [
+        {
+          "id": "legal-01",
+          "title": "GDPR data export flow",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "GDPR Article 15 requires data export within 30 days of request. CCPA similar. Must be automated at scale.",
+          "solution_steps": [
+            "Settings page: 'Export my data' button.",
+            "Fires server action that assembles JSON of: profile, all properties, all violations, all resolutions, all compliance events, all analytics events.",
+            "Sends via email as ZIP within 10 minutes.",
+            "Log request + completion in compliance_events type='data_export_requested/completed'."
+          ],
+          "files_affected": [
+            "NEW: app/api/data-export/route.ts",
+            "MODIFY: app/settings/SettingsForm.tsx"
+          ],
+          "verification": [
+            "Request export \u2014 receive ZIP with all records within 10 min."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "legal-02",
+          "title": "GDPR account deletion flow",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "GDPR Article 17 (right to erasure). Must delete all PII within 30 days. But you want to retain aggregated/anonymized data for analytics.",
+          "solution_steps": [
+            "Settings: 'Delete my account' button, double confirm.",
+            "Marks profile.deletion_requested_at = now().",
+            "Inngest daily job processes: anonymize profile (email\u2192sha256, phone\u2192null, name\u2192null), delete properties (cascades to violations, resolutions), keep aggregated compliance_events with user_id set to null.",
+            "Email user when complete.",
+            "Retain anonymized resolution cost data for moat \u2014 removing PII but keeping 'a resolution happened for $X in this category in Chicago in April 2026'."
+          ],
+          "files_affected": [
+            "NEW: lib/inngest/functions/process-deletion.ts",
+            "MODIFY: app/settings/SettingsForm.tsx"
+          ],
+          "verification": [
+            "Request deletion \u2014 after 24h, profile anonymized, data queryable shows no PII."
+          ],
+          "dependencies": [
+            "bg-01"
+          ]
+        },
+        {
+          "id": "legal-03",
+          "title": "Updated Privacy Policy + Terms of Service covering all data collection",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Given the amount of data you collect (resolutions, behavioral signals, contractor info), your privacy policy must clearly disclose it. Vague language = GDPR violations.",
+          "solution_steps": [
+            "Work with a lawyer (use iubenda or Termly for templates, then lawyer review).",
+            "Disclose every data point collected, purpose, retention, sharing.",
+            "Specific language around resolution data being aggregated for market intelligence products (future revenue).",
+            "ToS covers: service uptime, user obligations, payment terms, dispute resolution, limitation of liability.",
+            "Cookie banner if EU users (cookie consent management)."
+          ],
+          "files_affected": [
+            "NEW: app/privacy/page.tsx",
+            "NEW: app/terms/page.tsx",
+            "NEW: components/CookieBanner.tsx"
+          ],
+          "verification": [
+            "Legal review complete.",
+            "Policies cover every field in database."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "legal-04",
+          "title": "SMS A2P 10DLC registration",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "US SMS regulations require Application-to-Person registration. Without it, carriers block your messages. Also fines from CTIA.",
+          "solution_steps": [
+            "Twilio Console > Messaging > A2P 10DLC Registration.",
+            "Register as sole proprietor or small business (CasAlerts Ltd).",
+            "Submit use case: 'Customer service notifications for housing code violations.'",
+            "Wait for vetting (1-4 weeks).",
+            "Register your brand + campaign."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Twilio dashboard shows campaign status = approved.",
+            "Test SMS delivers successfully."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "legal-05",
+          "title": "CAN-SPAM + CASL email compliance",
+          "priority": "P0",
+          "effort": "S",
+          "problem": "Every marketing/transactional email must: include physical address, provide unsubscribe, not deceive in subject. Non-compliance = $50k/email fines.",
+          "solution_steps": [
+            "Audit all Resend templates in lib/email-alerts.ts \u2014 verify footer includes: business name, UK registered address, unsubscribe link.",
+            "Build /unsubscribe page that accepts token-signed URL: toggles email preferences without requiring login.",
+            "Subject lines must not deceive."
+          ],
+          "files_affected": [
+            "MODIFY: lib/email-alerts.ts (emailShell footer)",
+            "NEW: app/unsubscribe/page.tsx"
+          ],
+          "verification": [
+            "Every email contains all required elements.",
+            "Unsubscribe link works and disables future sends."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "legal-06",
+          "title": "Data Processing Agreement with sub-processors",
+          "priority": "P2",
+          "effort": "S",
+          "problem": "For GDPR and enterprise sales: formal DPAs with Supabase, Resend, Twilio, Stripe, Vercel, Inngest.",
+          "solution_steps": [
+            "Each provider has a standard DPA \u2014 sign them via their compliance portals.",
+            "Maintain list of sub-processors at casalerts.com/subprocessors.",
+            "Notify users 30 days before adding new sub-processors (in ToS)."
+          ],
+          "files_affected": [
+            "NEW: app/subprocessors/page.tsx"
+          ],
+          "verification": [
+            "All DPAs signed and stored."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "cost-controls",
+      "title": "Cost Controls & Infrastructure Hygiene",
+      "summary": "At scale, small inefficiencies become big bills.",
+      "items": [
+        {
+          "id": "cost-01",
+          "title": "Analytics events TTL (180-day retention for raw)",
+          "priority": "P2",
+          "effort": "S",
+          "problem": "Raw analytics_events at 100M+ rows/year will dominate storage cost. Most insights don't need raw events past 6 months.",
+          "solution_steps": [
+            "Aggregate daily: run nightly job that computes daily metric rollups into analytics_daily table.",
+            "Drop partitions > 180 days old (db-02 makes this trivial).",
+            "Keep rollups indefinitely (tiny)."
+          ],
+          "files_affected": [
+            "NEW: lib/inngest/functions/rollup-analytics.ts",
+            "NEW: supabase/migrations/NNN_analytics_daily.sql"
+          ],
+          "verification": [
+            "Partition older than 180 days dropped.",
+            "Historical trends still queryable from rollup."
+          ],
+          "dependencies": [
+            "db-02"
+          ]
+        },
+        {
+          "id": "cost-02",
+          "title": "Compliance score history: aggregate > 2 years",
+          "priority": "P3",
+          "effort": "S",
+          "problem": "Daily snapshots per property for years = 100M+ rows. Users only need recent granularity \u2014 older data fine as weekly.",
+          "solution_steps": [
+            "After 2 years, collapse daily \u2192 weekly averages.",
+            "Keep monthly averages indefinitely for trend analysis."
+          ],
+          "files_affected": [
+            "NEW: lib/inngest/functions/aggregate-old-scores.ts"
+          ],
+          "verification": [
+            "Run on test data \u2014 730 rows collapsed to ~100 weekly averages."
+          ],
+          "dependencies": [
+            "db-02"
+          ]
+        },
+        {
+          "id": "cost-03",
+          "title": "Resend + Twilio volume plan review",
+          "priority": "P1",
+          "effort": "XS",
+          "problem": "Pay-as-you-go pricing is expensive at volume. Volume plans cut costs 40-60%.",
+          "solution_steps": [
+            "At 50k emails/mo: Resend Pro $90.",
+            "At 100k+ emails/mo: Resend Growth.",
+            "Twilio: evaluate short code (higher throughput, better deliverability, ~$1k/mo) at 100k+ SMS/mo.",
+            "Monitor monthly spend \u2014 set budget alerts."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Monthly spend tracked in founder dashboard."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "cost-04",
+          "title": "Supabase storage monitoring",
+          "priority": "P2",
+          "effort": "XS",
+          "problem": "DB storage overage is $0.125/GB. Easy to miss.",
+          "solution_steps": [
+            "Enable Supabase usage alerts (Settings > Billing > Usage Alerts).",
+            "Alert at 75% of included storage.",
+            "Monthly review of largest tables: select relname, pg_size_pretty(pg_total_relation_size(oid)) from pg_class order by pg_total_relation_size(oid) desc limit 20."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Alert configured and received during testing."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "cost-05",
+          "title": "Vercel bandwidth monitoring + CDN optimization",
+          "priority": "P2",
+          "effort": "S",
+          "problem": "Bandwidth overages at $0.40/GB above included tier add up with image-heavy emails and dashboards.",
+          "solution_steps": [
+            "Audit next/image usage \u2014 all images served optimized.",
+            "Static assets cached with long max-age.",
+            "Review Vercel Analytics weekly for anomalies."
+          ],
+          "files_affected": [
+            "MODIFY: next.config.js (image config)"
+          ],
+          "verification": [
+            "Monthly bandwidth trend stays flat with user growth."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "frontend-perf",
+      "title": "Frontend Performance",
+      "summary": "Mobile-first, fast TTFB, graceful degradation.",
+      "items": [
+        {
+          "id": "fe-01",
+          "title": "React Suspense + streaming for dashboard",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "Dashboard currently waits for all queries before rendering. Slow networks see blank screen for seconds.",
+          "solution_steps": [
+            "Wrap slow data fetches in Suspense boundaries.",
+            "Render shell immediately, stream property cards as data arrives.",
+            "Use loading.tsx per route.",
+            "Use React Server Components where possible to avoid client bundle cost."
+          ],
+          "files_affected": [
+            "MODIFY: app/dashboard/page.tsx (add Suspense boundaries)",
+            "NEW: app/dashboard/loading.tsx"
+          ],
+          "verification": [
+            "Lighthouse score >90 for performance.",
+            "TTFB < 200ms, LCP < 2s."
+          ],
+          "dependencies": [
+            "db-03"
+          ]
+        },
+        {
+          "id": "fe-02",
+          "title": "Bundle size audit",
+          "priority": "P2",
+          "effort": "S",
+          "problem": "Next.js bundles can bloat from dependencies. Every KB slows mobile.",
+          "solution_steps": [
+            "Run @next/bundle-analyzer. Identify largest deps.",
+            "Replace heavy libs with lighter alternatives (e.g., date-fns over moment).",
+            "Dynamic import for non-critical components (charts, admin panels).",
+            "Target: main bundle <150KB gzipped."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Bundle analyzer report shows no single dep >50KB.",
+            "First-load JS <150KB on dashboard."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "fe-03",
+          "title": "Image optimization",
+          "priority": "P2",
+          "effort": "XS",
+          "problem": "Email images and dashboard assets could be unoptimized.",
+          "solution_steps": [
+            "All <img> replaced with next/image where possible.",
+            "Email images hosted on CDN, sized correctly, WebP.",
+            "Property thumbnails lazy-loaded."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Lighthouse image score perfect."
+          ],
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "id": "load-testing",
+      "title": "Load Testing Before Scaling",
+      "summary": "Find bottlenecks in staging, not in production.",
+      "items": [
+        {
+          "id": "load-01",
+          "title": "k6 load tests on critical paths",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "You don't know where the next bottleneck is until you simulate load. Better in staging than production.",
+          "solution_steps": [
+            "Install k6.",
+            "Scripts: 1000 concurrent dashboard page views, 500 concurrent onboarding flows, 200 concurrent resolution submissions.",
+            "Run against fully-seeded staging (test-02).",
+            "Target: p95 TTFB <500ms under 1000 concurrent. Error rate <0.1%.",
+            "Identify bottleneck. Fix. Repeat."
+          ],
+          "files_affected": [
+            "NEW: loadtests/*.js (k6 scripts)"
+          ],
+          "verification": [
+            "All critical paths pass SLA in k6 run."
+          ],
+          "dependencies": [
+            "test-01",
+            "test-02"
+          ]
+        },
+        {
+          "id": "load-02",
+          "title": "Simulate full-scale CRON in staging",
+          "priority": "P1",
+          "effort": "M",
+          "problem": "CRON with 210k properties has different failure modes than 1k. Must simulate at scale.",
+          "solution_steps": [
+            "Seed staging with 210k properties.",
+            "Run full CRON end-to-end.",
+            "Measure: total duration, error rate, DB connection pool pressure, worker concurrency limits.",
+            "Tune concurrency, batch sizes, retries until run completes cleanly in <1h."
+          ],
+          "files_affected": [],
+          "verification": [
+            "Full-scale CRON in staging completes successfully."
+          ],
+          "dependencies": [
+            "test-02",
+            "bg-01"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "incident-response",
+      "title": "Incident Response",
+      "summary": "When things break, having a plan matters more than never breaking.",
+      "items": [
+        {
+          "id": "inc-01",
+          "title": "Incident response runbook",
+          "priority": "P1",
+          "effort": "S",
+          "problem": "Without a plan, incidents take 3x longer to resolve and communication is chaotic.",
+          "solution_steps": [
+            "Document: severity levels (SEV1/SEV2/SEV3), criteria, on-call contact, communication channels, escalation.",
+            "SEV1 (down/data loss): <30 min response. Page founder. Status page update.",
+            "SEV2 (degraded): <2h response. Slack alert.",
+            "SEV3 (minor): next business day.",
+            "Template: incident log, RCA doc, customer comms."
+          ],
+          "files_affected": [
+            "NEW: docs/runbooks/incident-response.md"
+          ],
+          "verification": [
+            "Runbook reviewed and rehearsed."
+          ],
+          "dependencies": []
+        },
+        {
+          "id": "inc-02",
+          "title": "Public status page",
+          "priority": "P1",
+          "effort": "XS",
+          "problem": "When users experience issues, they check for a status page. Absence signals amateur hour.",
+          "solution_steps": [
+            "BetterStack Status Page (free, bundled with uptime).",
+            "Custom domain: status.casalerts.com.",
+            "Auto-updates from uptime monitors.",
+            "Manual incident posting for outages you discover first."
+          ],
+          "files_affected": [],
+          "verification": [
+            "status.casalerts.com loads with current status."
+          ],
+          "dependencies": [
+            "obs-03"
+          ]
+        },
+        {
+          "id": "inc-03",
+          "title": "Postmortem template + process",
+          "priority": "P2",
+          "effort": "XS",
+          "problem": "Without postmortems, same mistakes repeat.",
+          "solution_steps": [
+            "Template: what happened, timeline, root cause, customer impact, action items with owners.",
+            "Required for every SEV1 and SEV2.",
+            "Stored in docs/postmortems/. Review quarterly for patterns.",
+            "Blameless culture \u2014 focus on system, not people."
+          ],
+          "files_affected": [
+            "NEW: docs/templates/postmortem.md"
+          ],
+          "verification": [
+            "First incident produces completed postmortem."
+          ],
+          "dependencies": []
+        }
+      ]
+    }
+  ],
+  "execution_sequence": {
+    "description": "Recommended order to tackle items. Groups items by when to do them relative to growth.",
+    "before_any_growth_push_P0_only": [
+      "bg-01",
+      "bg-02",
+      "bg-03",
+      "bg-05",
+      "db-01",
+      "db-03",
+      "db-04",
+      "ext-01",
+      "ext-02",
+      "ext-04",
+      "ext-05",
+      "ext-06",
+      "sec-01",
+      "sec-02",
+      "sec-03",
+      "sec-04",
+      "val-01",
+      "obs-01",
+      "obs-02",
+      "obs-03",
+      "int-01",
+      "int-03",
+      "dr-01",
+      "test-01",
+      "test-03",
+      "test-05",
+      "legal-03",
+      "legal-04",
+      "legal-05"
+    ],
+    "first_60_days_after_launch_P1": [
+      "bg-04",
+      "bg-06",
+      "db-02",
+      "db-05",
+      "db-07",
+      "cache-01",
+      "cache-02",
+      "cache-04",
+      "ext-03",
+      "ext-07",
+      "sec-05",
+      "sec-06",
+      "sec-07",
+      "val-02",
+      "obs-04",
+      "obs-05",
+      "int-02",
+      "dr-02",
+      "dr-03",
+      "test-02",
+      "test-04",
+      "test-06",
+      "legal-01",
+      "legal-02",
+      "cost-03",
+      "fe-01",
+      "load-01",
+      "load-02",
+      "inc-01",
+      "inc-02"
+    ],
+    "before_crossing_30k_users_P2": [
+      "db-06",
+      "db-08",
+      "cache-03",
+      "sec-08",
+      "val-03",
+      "obs-06",
+      "test-07",
+      "legal-06",
+      "cost-01",
+      "cost-04",
+      "cost-05",
+      "fe-02",
+      "fe-03",
+      "inc-03"
+    ],
+    "after_above_completed_P3": [
+      "cost-02"
+    ]
+  },
+  "total_items_count": 74,
+  "items_by_priority": {
+    "P0": 29,
+    "P1": 29,
+    "P2": 15,
+    "P3": 1
+  }
+}
