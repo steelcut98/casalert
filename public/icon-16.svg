@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Walnut Brick CasAlerts favicon (flat version for 16x16 tabs/bookmarks) -->
+  <!-- No mortar lines - too noisy at small sizes -->
+  <style>
+    .brick-body { fill: #6f5037; }
+    @media (prefers-color-scheme: dark) {
+      .brick-body { fill: #b48b65; }
+    }
+  </style>
+  <rect class="brick-body" x="6" y="16" width="52" height="32" rx="4" />
+</svg>
