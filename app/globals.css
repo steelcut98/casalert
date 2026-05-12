@@ -92,3 +92,66 @@ body.light-theme .bg-zinc-50.dark\:bg-zinc-800 {
   background: #f5f5f5 !important;
 }
 /* Colored elements (red, green, amber) left unchanged */
+
+/* ============================================================
+   WALNUT BRICK DESIGN TOKENS — Phase 1
+   Additive only. Does not modify existing styles.
+   Apply via Tailwind utilities (bg-walnut, text-cream, etc.)
+   ============================================================ */
+
+:root {
+  /* Walnut brand palette */
+  --walnut-50:  #faf6f2;
+  --walnut-100: #f1e9df;
+  --walnut-200: #e3d3bf;
+  --walnut-300: #cdb191;
+  --walnut-400: #b48b65;
+  --walnut-500: #8f6a47;
+  --walnut-600: #6f5037;
+  --walnut-700: #563d2c;
+  --walnut-800: #3f2c20;
+  --walnut-900: #2a1d15;
+
+  /* Cream palette (warm neutrals) */
+  --cream-50:   #fdfbf7;
+  --cream-100:  #faf5eb;
+  --cream-200:  #f3ead7;
+  --cream-300:  #e8d9b8;
+
+  /* Brick accent (only for rare accents — never as primary state color) */
+  --brick-500:  #a14a3a;
+  --brick-600:  #843a2d;
+
+  /* Font family tokens — set in layout.tsx */
+  --font-marcellus: var(--font-marcellus-sans);
+  --font-marcellus-sc: var(--font-marcellus-sc-sans);
+  --font-jetbrains: var(--font-jetbrains-mono-sans);
+}
+
+/* Register Walnut tokens as Tailwind utility classes (bg-walnut, text-cream, etc.) */
+@theme inline {
+  --color-walnut-50:  var(--walnut-50);
+  --color-walnut-100: var(--walnut-100);
+  --color-walnut-200: var(--walnut-200);
+  --color-walnut-300: var(--walnut-300);
+  --color-walnut-400: var(--walnut-400);
+  --color-walnut-500: var(--walnut-500);
+  --color-walnut-600: var(--walnut-600);
+  --color-walnut-700: var(--walnut-700);
+  --color-walnut-800: var(--walnut-800);
+  --color-walnut-900: var(--walnut-900);
+
+  --color-cream-50:   var(--cream-50);
+  --color-cream-100:  var(--cream-100);
+  --color-cream-200:  var(--cream-200);
+  --color-cream-300:  var(--cream-300);
+
+  --color-brick-500:  var(--brick-500);
+  --color-brick-600:  var(--brick-600);
+
+  --font-marcellus:   var(--font-marcellus);
+  --font-marcellus-sc: var(--font-marcellus-sc);
+  --font-jetbrains:   var(--font-jetbrains);
+}
+
+/* End Walnut Brick Phase 1 */
