@@ -1,11 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <!-- Walnut Brick CasAlerts favicon (flat version for 16x16 tabs/bookmarks) -->
-  <!-- No mortar lines - too noisy at small sizes -->
-  <style>
-    .brick-body { fill: #6f5037; }
-    @media (prefers-color-scheme: dark) {
-      .brick-body { fill: #b48b65; }
-    }
-  </style>
-  <rect class="brick-body" x="6" y="16" width="52" height="32" rx="4" />
+  <!-- CasAlerts CA on brick - 16x16 HIGH CONTRAST version -->
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Marcellus&amp;display=swap');
+
+      .brick-body { fill: #6f5037; }
+      .ca-text {
+        font-family: 'Marcellus', 'Times New Roman', 'Georgia', serif;
+        font-size: 36px;
+        fill: #ffffff;
+        stroke: #ffffff;
+        stroke-width: 1.2;
+        text-anchor: middle;
+        dominant-baseline: central;
+        letter-spacing: -2px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .brick-body { fill: #b48b65; }
+        .ca-text { fill: #1a0f08; stroke: #1a0f08; }
+      }
+    </style>
+  </defs>
+
+  <rect class="brick-body" x="2" y="10" width="60" height="44" rx="4" />
+  <text class="ca-text" x="32" y="33">CA</text>
 </svg>
