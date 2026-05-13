@@ -18,7 +18,7 @@ export default function HomePage() {
       <LandingNav fontClassName={fontClassName} />
 
       {/* Hero */}
-      <section className="border-b border-zinc-800 px-4 pb-16 pt-12 sm:px-6 md:pt-16">
+      <section className="border-b border-walnut-800 px-4 pb-16 pt-12 sm:px-6 md:pt-16">
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 lg:items-center">
             <div>
@@ -47,7 +47,7 @@ export default function HomePage() {
               </p>
             </div>
             <div className="flex justify-center lg:justify-end">
-              <div className="w-full max-w-sm rounded-lg border-l-4 border-red-500 bg-zinc-800 p-4 shadow-lg">
+              <div className="w-full max-w-sm rounded-lg border-l-4 border-red-500 bg-walnut-800 p-4 shadow-lg">
                 <p className="text-xs font-semibold uppercase tracking-wide text-red-500">
                   🔴 New Violation Detected
                 </p>
@@ -70,7 +70,7 @@ export default function HomePage() {
       </section>
 
       {/* Trust bar */}
-      <section className="border-b border-zinc-800 bg-zinc-900 px-4 py-6 sm:px-6">
+      <section className="border-b border-walnut-800 bg-walnut-900 px-4 py-6 sm:px-6">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-8 text-sm text-zinc-500">
           <span>🏘️ Monitoring 200+ properties</span>
           <span>📡 Direct city database access</span>
@@ -79,13 +79,13 @@ export default function HomePage() {
       </section>
 
       {/* Problem */}
-      <section className="border-b border-zinc-800 px-4 py-16 sm:px-6">
+      <section className="border-b border-walnut-800 px-4 py-16 sm:px-6">
         <div className="mx-auto max-w-6xl">
           <h2 className={`text-center text-2xl font-bold text-zinc-100 sm:text-3xl ${fontClassName}`}>
             The Problem Every Landlord Faces
           </h2>
           <div className="mt-12 grid gap-6 sm:grid-cols-3">
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <p className="text-2xl" aria-hidden="true">🔴</p>
               <h3 className={`mt-2 text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 Tenant-filed complaints
@@ -94,7 +94,7 @@ export default function HomePage() {
                 A tenant calls 311, an inspector shows up, and a violation is filed — all before you know anything happened. Now it&apos;s on public record.
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <p className="text-2xl" aria-hidden="true">⏰</p>
               <h3 className={`mt-2 text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 Missed deadlines
@@ -103,7 +103,7 @@ export default function HomePage() {
                 Compliance deadlines start ticking the day a violation is filed. Miss one and you&apos;re looking at escalated fines, court dates, or license problems.
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <p className="text-2xl" aria-hidden="true">💰</p>
               <h3 className={`mt-2 text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 Preventable fines
@@ -117,14 +117,14 @@ export default function HomePage() {
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="scroll-mt-20 border-b border-zinc-800 bg-zinc-900/50 px-4 py-16 sm:px-6">
+      <section id="how-it-works" className="scroll-mt-20 border-b border-walnut-800 bg-walnut-900/30 px-4 py-16 sm:px-6">
         <div className="mx-auto max-w-6xl">
           <h2 className={`text-center text-2xl font-bold text-zinc-100 sm:text-3xl ${fontClassName}`}>
             How CasAlerts Works
           </h2>
           <div className="mt-12 grid gap-10 sm:grid-cols-3">
             <div>
-              <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-emerald-500 bg-zinc-900 text-sm font-bold text-emerald-500">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-walnut-500 bg-walnut-900 text-sm font-bold text-walnut-400">
                 1
               </span>
               <h3 className={`mt-4 text-lg font-bold text-zinc-100 ${fontClassName}`}>
@@ -135,7 +135,7 @@ export default function HomePage() {
               </p>
             </div>
             <div>
-              <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-emerald-500 bg-zinc-900 text-sm font-bold text-emerald-500">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-walnut-500 bg-walnut-900 text-sm font-bold text-walnut-400">
                 2
               </span>
               <h3 className={`mt-4 text-lg font-bold text-zinc-100 ${fontClassName}`}>
@@ -146,7 +146,7 @@ export default function HomePage() {
               </p>
             </div>
             <div>
-              <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-emerald-500 bg-zinc-900 text-sm font-bold text-emerald-500">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-walnut-500 bg-walnut-900 text-sm font-bold text-walnut-400">
                 3
               </span>
               <h3 className={`mt-4 text-lg font-bold text-zinc-100 ${fontClassName}`}>
@@ -161,13 +161,13 @@ export default function HomePage() {
       </section>
 
       {/* Features */}
-      <section id="features" className="scroll-mt-20 border-b border-zinc-800 px-4 py-16 sm:px-6">
+      <section id="features" className="scroll-mt-20 border-b border-walnut-800 px-4 py-16 sm:px-6">
         <div className="mx-auto max-w-6xl">
           <h2 className={`text-center text-2xl font-bold text-zinc-100 sm:text-3xl ${fontClassName}`}>
             What You Get
           </h2>
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <h3 className={`text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 Instant Violation Alerts
               </h3>
@@ -175,7 +175,7 @@ export default function HomePage() {
                 Email and SMS the moment a new violation appears on city records. Know in hours, not weeks.
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <h3 className={`text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 Free Baseline Audit
               </h3>
@@ -183,7 +183,7 @@ export default function HomePage() {
                 Every open violation on your property, surfaced the moment you sign up. See exactly where you stand.
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <h3 className={`text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 COMPLAINT Detection
               </h3>
@@ -191,7 +191,7 @@ export default function HomePage() {
                 Tenant-filed complaints are flagged in red and prioritized — these carry the highest legal risk.
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <h3 className={`text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 Multi-City Monitoring
               </h3>
@@ -199,7 +199,7 @@ export default function HomePage() {
                 Chicago and Philadelphia today. Los Angeles, Houston, and Atlanta coming 2026.
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <div className="flex items-center gap-2">
                 <h3 className={`text-lg font-bold text-zinc-100 ${fontClassName}`}>
                   Compliance History Export
@@ -212,7 +212,7 @@ export default function HomePage() {
                 Download your full violation history as CSV. Useful for insurance renewals, legal proceedings, or property sales.
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <div className="flex items-center gap-2">
                 <h3 className={`text-lg font-bold text-zinc-100 ${fontClassName}`}>
                   SMS + Email Alerts
@@ -232,13 +232,13 @@ export default function HomePage() {
       <PricingSection fontClassName={fontClassName} />
 
       {/* City coverage */}
-      <section className="border-t border-zinc-800 px-4 py-16 sm:px-6">
+      <section className="border-t border-walnut-800 px-4 py-16 sm:px-6">
         <div className="mx-auto max-w-6xl">
           <h2 className={`text-center text-2xl font-bold text-zinc-100 sm:text-3xl ${fontClassName}`}>
             Built for Your City
           </h2>
           <div className="mt-12 grid gap-6 sm:grid-cols-2">
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <h3 className={`text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 Chicago, IL
               </h3>
@@ -246,7 +246,7 @@ export default function HomePage() {
                 We monitor the City of Chicago&apos;s official building code violation database — updated daily. Covers tenant complaints, routine inspections, registration issues, and permit violations.
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+            <div className="rounded-lg border border-walnut-700 bg-walnut-900 p-6">
               <h3 className={`text-lg font-bold text-zinc-100 ${fontClassName}`}>
                 Philadelphia, PA
               </h3>
@@ -264,7 +264,7 @@ export default function HomePage() {
       <FAQSection fontClassName={fontClassName} />
 
       {/* Final CTA */}
-      <section className="relative border-t border-zinc-800 bg-zinc-900 px-4 py-20 sm:px-6">
+      <section className="relative border-t border-walnut-800 bg-walnut-900 px-4 py-20 sm:px-6">
         <div className="absolute inset-0 bg-gradient-to-b from-emerald-950/20 to-transparent" />
         <div className="relative mx-auto max-w-2xl text-center">
           <h2 className={`text-2xl font-bold text-zinc-100 sm:text-3xl ${fontClassName}`}>
@@ -283,7 +283,7 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-zinc-800 bg-zinc-950 px-4 py-8 sm:px-6">
+      <footer className="border-t border-walnut-800 bg-zinc-950 px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-6xl">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <p className="text-sm text-zinc-600">© 2026 CasAlerts</p>
