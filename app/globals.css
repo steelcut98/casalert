@@ -111,6 +111,7 @@ body.light-theme .bg-zinc-50.dark\:bg-zinc-800 {
   --walnut-700: #563d2c;
   --walnut-800: #3f2c20;
   --walnut-900: #2a1d15;
+  --walnut-950: #1a0f08;
 
   /* Cream palette (warm neutrals) */
   --cream-50:   #fdfbf7;
@@ -140,6 +141,7 @@ body.light-theme .bg-zinc-50.dark\:bg-zinc-800 {
   --color-walnut-700: var(--walnut-700);
   --color-walnut-800: var(--walnut-800);
   --color-walnut-900: var(--walnut-900);
+  --color-walnut-950: var(--walnut-950);
 
   --color-cream-50:   var(--cream-50);
   --color-cream-100:  var(--cream-100);

@@ -14,7 +14,7 @@ const fontClassName = dmSans.className;
 
 export default function HomePage() {
   return (
-    <div className={`min-h-screen bg-zinc-950 text-zinc-100 ${fontClassName}`}>
+    <div className={`min-h-screen bg-walnut-950 text-zinc-100 ${fontClassName}`}>
       <LandingNav fontClassName={fontClassName} />
 
       {/* Hero */}
@@ -283,7 +283,7 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-walnut-800 bg-zinc-950 px-4 py-8 sm:px-6">
+      <footer className="border-t border-walnut-800 bg-walnut-950 px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-6xl">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <p className="text-sm text-zinc-600">© 2026 CasAlerts</p>
